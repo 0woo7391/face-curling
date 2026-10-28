@@ -6,9 +6,9 @@ export const DEFAULTS = Object.freeze({
   stoneRadius: 0.13,
   friction: 0.35, // μ: 기본 감속
   sweepFrictionReduction: 0.22, // 스위핑 강도 s=1일 때 μ 감소율
-  curlK: 0.04, // 곡률 가속 기준값
+  curlK: 0.12, // 곡률 가속 기준값 — ●●(spin 1)로 24 m 가면 약 1.35 m 휨
   curlSpeedRef: 1.2, // 이 속도보다 느려질수록 곡률이 커짐
-  sweepCurlReduction: 0.35, // s=1일 때 곡률 감소율
+  sweepCurlReduction: 0.8, // s=1일 때 곡률 감소율 — 쓸면 곧게, 멈추면 휜다
   restitution: 0.88,
   stopSpeed: 0.03,
   stopHoldTicks: 10,

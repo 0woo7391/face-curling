@@ -46,3 +46,42 @@ describe('stepStoneVelocity', () => {
     expect(near).toBeLessThan(cfg.boardCenterY - cfg.boardSize / 2);
   });
 });
+
+describe('회전과 스위핑으로 휘는 길 조절', () => {
+  // 처음부터 sweepFrom(m) 지점 이후 계속 쓸 때, 24 m에서 멈추도록 파워를 맞춘 뒤 옆으로 휜 거리
+  const lateralAt24 = (sweepFrom) => {
+    const sim = (power) => {
+      let v = launchVelocity(0, power, cfg);
+      let x = 0;
+      let y = 0;
+      for (let i = 0; i < 7200; i++) {
+        v = stepStoneVelocity(v.x, v.y, 1, sweepFrom != null && y > sweepFrom ? 1 : 0, cfg, dt);
+        if (!v.x && !v.y) break;
+        x += v.x * dt;
+        y += v.y * dt;
+      }
+      return { x, y };
+    };
+    let lo = 0;
+    let hi = 1;
+    for (let i = 0; i < 30; i++) {
+      const m = (lo + hi) / 2;
+      if (sim(m).y < 24) lo = m;
+      else hi = m;
+    }
+    return sim(lo).x;
+  };
+
+  it('●●로 24 m 가면 1 m 넘게 휜다', () => {
+    expect(lateralAt24(null)).toBeGreaterThan(1.2);
+  });
+
+  it('같은 자리에 멈춰도 일찍부터 쓸수록 덜 휜다', () => {
+    const none = lateralAt24(null);
+    const late = lateralAt24(16);
+    const early = lateralAt24(0);
+    expect(late).toBeLessThan(none);
+    expect(early).toBeLessThan(late);
+    expect(early).toBeLessThan(none * 0.4);
+  });
+});
