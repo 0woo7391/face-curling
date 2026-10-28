@@ -93,10 +93,12 @@ export class Fx {
           this.ring(e.x, e.y, '#ff5252', 0.25, 0.25, 0.3);
           break;
         case 'collision': {
-          const k = Math.min(1, e.impulse / 3);
-          this.ring(e.x, e.y, '#ffffff', 0.4 + 0.6 * k, 0.4);
+          // 큰 스톤끼리 부딪힐수록 고리·가루·화면 흔들림이 크다 (sound.js와 같은 무게 계수)
+          const heavy = Math.min(1, Math.max(0, (e.mass ?? 0.1) - 0.05) / 0.15);
+          const k = Math.min(1, (e.impulse / 3) * (0.6 + 0.8 * heavy));
+          this.ring(e.x, e.y, '#ffffff', (0.4 + 0.6 * k) * (1 + heavy), 0.4);
           this.puff(e.x, e.y, 8 + Math.round(20 * k), '#e1f5fe', { speed: 1.5 + 2 * k, up: 1.6 });
-          this.punch = Math.max(this.punch, 0.08 + 0.2 * k);
+          this.punch = Math.max(this.punch, (0.08 + 0.2 * k) * (1 + 0.8 * heavy));
           break;
         }
         case 'stop':

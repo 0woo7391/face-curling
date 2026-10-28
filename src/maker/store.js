@@ -1,4 +1,5 @@
 // 만든 얼굴을 이 브라우저에 저장 (명세 7.2: IndexedDB). 실패해도 게임은 기본 얼굴로 동작한다.
+import { stickerOutline } from './extract.js';
 const DB = 'face-curling';
 const STORE = 'faces';
 const KEY = 'current';
@@ -51,7 +52,10 @@ export async function loadFace() {
     const rec = await tx('readonly', (s) => s.get(KEY));
     if (!rec || rec.schemaVersion !== 1) return null;
     const parts = {};
-    for (const [id, p] of Object.entries(rec.parts)) parts[id] = { rect: p.rect, anchor: p.anchor, canvas: await toCanvas(p.png) };
+    for (const [id, p] of Object.entries(rec.parts)) {
+      const part = { rect: p.rect, anchor: p.anchor, canvas: await toCanvas(p.png) };
+      parts[id] = { ...part, outline: stickerOutline(part) };
+    }
     return { faceBox: rec.faceBox, crop: await toCanvas(rec.crop), empty: await toCanvas(rec.empty), parts };
   } catch (err) {
     console.warn('얼굴 불러오기 실패', err);

@@ -2,6 +2,7 @@
 //   크롭(1:1, N×N) → 부위 마스크(자동 + 손 보정) → 빈 얼굴(채우기) → 부위 스티커(흰 테두리, 방향 A)
 import { FACE_PARTS } from '../core/board.js';
 import { boxBlur, dilate, alphaStats, inpaint } from './imageops.js';
+import { radialOutline } from '../core/shape.js';
 
 export const N = 512; // 크롭 해상도
 
@@ -131,6 +132,23 @@ export function makeSticker(crop, alpha, border = 5) {
   return { canvas: c, rect: { x: x0 / size, y: y0 / size, w: w / size, h: h / size }, anchor: st.anchor };
 }
 
+/**
+ * 스티커 윤곽 (흰 테두리 포함) = 스톤 모양. 앵커 기준 q 차이 [{x, y}]
+ * 저장된 얼굴에는 윤곽을 따로 저장하지 않고 불러올 때 스티커에서 다시 만든다.
+ */
+export function stickerOutline(sticker, size = N) {
+  const { canvas: c, rect, anchor } = sticker;
+  const { data } = c.getContext('2d').getImageData(0, 0, c.width, c.height);
+  const inside = (x, y) => {
+    const px = Math.floor(x);
+    const py = Math.floor(y);
+    return px >= 0 && py >= 0 && px < c.width && py < c.height && data[(py * c.width + px) * 4 + 3] > 127;
+  };
+  const cx = (anchor.x - rect.x) * size;
+  const cy = (anchor.y - rect.y) * size;
+  return radialOutline(inside, cx, cy, Math.hypot(c.width, c.height)).map((p) => ({ x: p.x / size, y: p.y / size }));
+}
+
 /** 원위치 재합성 (명세 3.4-5): 빈 얼굴 위에 부위 조각을 원래 자리에 — 원본과 비교용 */
 export function recomposite(empty, crop, masks) {
   const size = crop.width;
@@ -150,13 +168,16 @@ export function recomposite(empty, crop, masks) {
   return c;
 }
 
-/** 게임이 쓰는 얼굴 데이터 */
-export function buildFace(crop, masks, faceBox) {
+/**
+ * 게임이 쓰는 얼굴 데이터
+ * @param tight 부위별 실제 윤곽 마스크 — 스티커·스톤 모양은 (손으로 다듬은) 지우기 마스크와 이것이 겹치는 부분만 쓴다
+ */
+export function buildFace(crop, masks, faceBox, tight) {
   const empty = makeEmptyFace(crop, masks);
   const parts = {};
   for (const p of FACE_PARTS) {
-    const s = makeSticker(crop, masks[p.id]);
-    if (s) parts[p.id] = s;
+    const s = makeSticker(crop, masks[p.id].map((v, i) => Math.min(v, tight[p.id][i])));
+    if (s) parts[p.id] = { ...s, outline: stickerOutline(s) };
   }
   return { crop, empty, parts, faceBox };
 }

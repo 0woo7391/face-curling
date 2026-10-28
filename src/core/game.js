@@ -16,7 +16,8 @@ import { Simulation } from './simulation.js';
 import { SweepController, sweepPositionEfficiency, broomJudgeRadius } from './sweep.js';
 import { BurnMonitor, updateAssist } from './burn.js';
 import { Character, ARRIVE_GAIN } from './character.js';
-import { partError, partScore, checkLayout, fitStoneRadius } from './scoring.js';
+import { partError, partScore, checkLayout } from './scoring.js';
+import { buildShapes, defaultOutline, stoneExtent, tiltOf } from './shape.js';
 
 export const LAUNCH = Object.freeze({ x: 0, y: 0 });
 
@@ -36,14 +37,19 @@ export class Game {
 
   restart() {
     this.sim?.free();
-    // 얼굴마다 정답 간격이 달라 퍽 반지름만 맞춰 덮어쓴다. 나머지 값은 원래 설정을 그대로 따라간다 (프로토타입 상속)
+    // this.cfg는 튜닝 패널 값을 그대로 따라가는 파생 설정 (프로토타입 상속)
     this.cfg = Object.create(this.baseCfg);
     this.board = makeBoard(this.cfg);
     const fp = this.face?.parts ?? {};
-    this.parts = FACE_PARTS.map((p) => ({ ...p, q: fp[p.id]?.anchor ?? p.q, status: 'pending', burnCause: null }));
-    const r = fitStoneRadius(this.parts, this.board, this.baseCfg);
-    if (r < this.baseCfg.stoneRadius) this.cfg.stoneRadius = r;
-    this.sim = new Simulation(this.R, this.cfg);
+    // 스톤 = 부위 모양 실제 크기. 사진 부위는 스티커 윤곽, 없으면 기본 도형
+    const src = FACE_PARTS.map((p) => {
+      const f = fp[p.id];
+      return f?.outline ? { id: p.id, q: f.anchor, outline: f.outline, rect: f.rect } : { id: p.id, q: f?.anchor ?? p.q, outline: defaultOutline(p) };
+    });
+    const { scale, shapes } = buildShapes(src, this.board, this.cfg);
+    this.shapeScale = scale; // 가장 많이 줄인 부위의 배율 (부위별 배율은 part.scale)
+    this.parts = FACE_PARTS.map((p, i) => ({ ...p, q: src[i].q, ...shapes.get(p.id), status: 'pending', burnCause: null }));
+    this.sim = new Simulation(this.R, this.cfg, shapes);
     const fb = this.face?.faceBox;
     this.faceDiagonal = fb ? Math.hypot(fb.x1 - fb.x0, fb.y1 - fb.y0) : FACE_DIAGONAL;
     this.state = 'PART_SELECT';
@@ -104,8 +110,9 @@ export class Game {
   }
 
   resetCharacter() {
-    // 스톤 왼쪽 앞, 빗자루가 스톤 경로에 닿지 않는 위치에서 출발
-    this.character.reset(LAUNCH.x - this.cfg.broomReach - 0.45, LAUNCH.y + this.cfg.charStartAhead);
+    // 스톤 왼쪽 앞, 빗자루가 스톤 경로에 닿지 않는 위치에서 출발 (큰 스톤일수록 더 옆으로)
+    const extra = Math.max(0, (this.currentPart?.radius ?? 0) - this.cfg.stoneRadius);
+    this.character.reset(LAUNCH.x - this.cfg.broomReach - 0.45 - extra, LAUNCH.y + this.cfg.charStartAhead + extra);
   }
 
   emit(text) {
@@ -308,7 +315,7 @@ export class Game {
     if (sp < 1e-3) return;
     const dx = s.vx / sp;
     const dy = s.vy / sp;
-    const best = cfg.stoneRadius + broomJudgeRadius(cfg) + cfg.cushionWidth + 0.12;
+    const best = stoneExtent(s, dx, dy, cfg) + broomJudgeRadius(cfg) + cfg.cushionWidth + 0.12;
     const b = this.broom;
     const along = (b.x - s.x) * dx + (b.y - s.y) * dy;
     // 캐릭터는 움직이는 목표를 v / ARRIVE_GAIN만큼 뒤따르므로 그만큼 앞을 겨냥한다
@@ -393,7 +400,10 @@ export class Game {
       const s = this.sim.stones.get(p.id);
       const placed = s && (p.status === 'stopped' || p.status === 'moving');
       const err = placed ? partError(s, p.q, this.board, this.faceDiagonal) : null;
-      return { id: p.id, label: p.label, status: p.status, burnCause: p.burnCause, err, score: placed ? partScore(err, this.cfg.allowedError) : 0 };
+      // 기울기: 똑바로에서 90°마다 tiltPenalty만큼 감점 (180° = 2배)
+      const tilt = placed ? tiltOf(s.angle) : null;
+      const score = placed ? partScore(err, this.cfg.allowedError) * (1 - (this.cfg.tiltPenalty * tilt) / (Math.PI / 2)) : 0;
+      return { id: p.id, label: p.label, status: p.status, burnCause: p.burnCause, err, tilt, score };
     });
     const total = rows.reduce((a, r) => a + r.score, 0);
     return { rows, total, mean: total / rows.length };

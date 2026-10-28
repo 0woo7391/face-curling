@@ -8,13 +8,15 @@ import * as THREE from 'three';
 import { FACE_BOX } from '../core/board.js';
 import { LAUNCH } from '../core/game.js';
 import { broomJudgeRadius } from '../core/sweep.js';
-import { faceBoardTexture, puckTexture, labelTexture, stickerPuckTexture, canvasTexture } from './textures.js';
+import { faceBoardTexture, shapeTexture, labelTexture, canvasTexture } from './textures.js';
+import { stoneExtent } from '../core/shape.js';
 import { Fx } from './fx.js';
 
 const V = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_TOP = new THREE.Vector3(0, 0, -1); // 탑다운에서 화면 위 = 레인 진행 방향
 const lerp = (a, b, t) => a + (b - a) * t;
+const lerpAngle = (a, b, t) => a + (Math.atan2(Math.sin(b - a), Math.cos(b - a))) * t;
 const C = {
   broom: new THREE.Color('#5c6bc0'),
   good: new THREE.Color('#76ff03'),
@@ -28,6 +30,17 @@ const C = {
 
 const basic = (color, opacity = 1) =>
   new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1, side: THREE.DoubleSide, toneMapped: false });
+
+/** 고리 크기를 바꿀 때만 형상을 다시 만든다 (drawRange는 유지) */
+function fitRing(m, inner, outer) {
+  const key = `${inner.toFixed(3)}:${outer.toFixed(3)}`;
+  if (m.userData.ringKey === key) return;
+  m.userData.ringKey = key;
+  const range = { ...m.geometry.drawRange };
+  m.geometry.dispose();
+  m.geometry = new THREE.RingGeometry(inner, outer, 48);
+  m.geometry.setDrawRange(range.start, range.count);
+}
 
 function flatRing(inner, outer, color, opacity, segments = 48) {
   const m = new THREE.Mesh(new THREE.RingGeometry(inner, outer, segments), basic(color, opacity));
@@ -162,7 +175,8 @@ export class Renderer {
 
     this.stoneMeshes = new Map();
     const fp = game.face?.parts ?? {};
-    this.puckTextures = new Map(game.parts.map((p) => [p.id, fp[p.id] ? stickerPuckTexture(p, fp[p.id].canvas) : puckTexture(p)]));
+    // 스톤 윗면: 사진 부위는 스티커 그대로, 기본 얼굴은 부위 색 도형
+    this.topTextures = new Map(game.parts.map((p) => [p.id, fp[p.id]?.outline ? canvasTexture(fp[p.id].canvas) : shapeTexture(p)]));
     this.buildResultStickers(game);
     this.buildThrowFeedback(game);
     this.buildCharacter();
@@ -256,11 +270,10 @@ export class Renderer {
   /** 스위핑 반응: 스톤 둘레 강도 고리, 스톤 앞 얼음 녹는 띠, 위험할 때만 나타나는 경고 고리 */
   buildSweepFeedback(game) {
     const { cfg } = game;
-    const r = cfg.stoneRadius;
-    const bj = broomJudgeRadius(cfg);
-    this.intensityRing = flatRing(r * 1.6, r * 2.1, '#76ff03', 0.95, 48);
+    // 고리 두 개는 스톤마다 크기가 달라 그 스톤의 감싸는 반지름으로 다시 만든다 (fitRing)
+    this.intensityRing = flatRing(1, 1.1, '#76ff03', 0.95, 48);
     this.melt = flatStrip('#b3e5fc', 0);
-    this.cushionWarn = flatRing(r + bj + cfg.cushionWidth - 0.025, r + bj + cfg.cushionWidth, '#ffd600', 0.9);
+    this.cushionWarn = flatRing(1, 1.1, '#ffd600', 0.9);
     this.bodyWarn = flatRing(cfg.bodyJudgeRadius + 0.02, cfg.bodyJudgeRadius + 0.07, '#ff1744', 0.9);
     this.scene.add(this.intensityRing, this.melt, this.cushionWarn, this.bodyWarn);
   }
@@ -307,28 +320,39 @@ export class Renderer {
     }
   }
 
+  /**
+   * 부위 모양 스톤: 윤곽을 두께만큼 뽑은 조각. 윗면 = 스티커, 옆면 = 흰 다이컷.
+   * 코는 두껍고 모서리를 둥글게 깎아 솟아 보이게 한다. 바깥 윤곽은 충돌 모양과 같게 (bevelOffset = −bevelSize)
+   */
   makeStone(part) {
-    const r = this.cfg.stoneRadius;
+    const nose = part.id === 'nose';
+    const depth = nose ? 0.1 : 0.035;
+    const bevel = nose ? 0.06 : 0.012;
+    const shape = new THREE.Shape(part.shape.map((p) => new THREE.Vector2(p.x, p.y)));
+    const geo = new THREE.ExtrudeGeometry(shape, { depth, bevelEnabled: true, bevelThickness: bevel, bevelSize: bevel, bevelOffset: -bevel, bevelSegments: nose ? 5 : 2, curveSegments: 1 });
+    // 모양 평면(x, y) → 바닥(x, -z), 두께 → 높이 (V()와 같은 축)
+    geo.rotateX(-Math.PI / 2);
+    geo.translate(0, bevel, 0);
+    // 윗면 UV = 모양 좌표 그대로이므로 텍스처를 texRect에 맞춘다
+    const tex = this.topTextures.get(part.id).clone();
+    const t = part.texRect;
+    tex.repeat.set(1 / t.w, 1 / t.h);
+    tex.offset.set(-t.x0 / t.w, -t.y0 / t.h);
+    tex.needsUpdate = true;
+    const top = new THREE.MeshStandardMaterial({ map: tex, roughness: 0.55 });
+    const side = new THREE.MeshStandardMaterial({ color: '#ffffff', roughness: 0.4 });
+    const mesh = new THREE.Mesh(geo, [top, side]);
     const g = new THREE.Group();
-    const base = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 0.96, 0.07, 32), new THREE.MeshStandardMaterial({ color: '#78909c', roughness: 0.5 }));
-    base.position.y = 0.035;
-    const decal = new THREE.Mesh(new THREE.CircleGeometry(r * 0.8, 32), new THREE.MeshBasicMaterial({ map: this.puckTextures.get(part.id) }));
-    decal.rotation.x = -Math.PI / 2;
-    decal.position.y = 0.0715;
-    const handle = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, 0.025, 0.045), new THREE.MeshStandardMaterial({ color: '#263238' }));
-    handle.position.y = 0.09;
-    // 작은 퍽의 가시성 보강 (명세 5.3) — 판정 크기와 무관
-    const glow = flatRing(r * 1.05, r * 1.45, part.color, 0.55);
-    glow.position.y = 0.004;
-    g.add(base, decal, handle, glow);
-    g.userData = { handle, decal, partId: part.id };
+    g.add(mesh);
+    g.userData = { partId: part.id };
     return g;
   }
 
   setPreviewPart(part) {
     if (this.previewStone.userData.partId === part.id) return;
-    this.previewStone.userData.decal.material.map = this.puckTextures.get(part.id);
-    this.previewStone.userData.partId = part.id;
+    this.scene.remove(this.previewStone);
+    this.previewStone = this.makeStone(part);
+    this.scene.add(this.previewStone);
   }
 
   handleEvents(events, game) {
@@ -434,7 +458,7 @@ export class Renderer {
         this.scene.add(m);
       }
       m.position.copy(V(lerp(s.prevX, s.x, alpha), lerp(s.prevY, s.y, alpha)));
-      m.userData.handle.rotation.y = -s.angle; // 위에서 볼 때 시계 방향 = +spin
+      m.rotation.y = lerpAngle(s.prevAngle ?? s.angle, s.angle, alpha); // 월드 반시계 + = three Y축 +
       // 결과: 퍽 대신 스티커가 차례로 '착' 붙는다
       const sticker = this.resultStickers.get(s.id);
       const showSticker = !!sticker && game.state === 'RESULT';
@@ -446,8 +470,12 @@ export class Renderer {
           const t = Math.min(1, Math.max(0, (this.time - (this.resultAt ?? 0) - order * 0.15) / 0.25));
           const pop = t < 1 ? 1.25 - 0.25 * t : 1;
           const u = sticker.userData;
-          sticker.position.copy(V(s.x + u.dx, s.y + u.dy, 0.02 + order * 0.002));
-          sticker.scale.set(u.w * pop * t, 1, u.h * pop * t);
+          const k = game.parts.find((p) => p.id === s.id).scale;
+          const c = Math.cos(s.angle);
+          const sn = Math.sin(s.angle);
+          sticker.position.copy(V(s.x + (u.dx * c - u.dy * sn) * k, s.y + (u.dx * sn + u.dy * c) * k, 0.02 + order * 0.002));
+          sticker.rotation.y = s.angle;
+          sticker.scale.set(u.w * k * pop * t, 1, u.h * k * pop * t);
         }
       }
     }
@@ -474,7 +502,7 @@ export class Renderer {
     this.setPreviewPart(game.currentPart);
     const dx = Math.sin(game.aimAngle);
     const dy = Math.cos(game.aimAngle);
-    const r = this.cfg.stoneRadius;
+    const r = game.currentPart.radius;
 
     // 파워: 스톤이 뒤로 당겨지고, 옆 막대가 차오르며 초록→노랑→빨강
     const pw = pulling ? game.power : 0;
@@ -483,18 +511,18 @@ export class Renderer {
     this.previewStone.position.copy(V(stone.x, stone.y));
     const powerColor = pw < 0.5 ? C.powerLo.clone().lerp(C.powerMid, pw * 2) : C.powerMid.clone().lerp(C.powerHi, (pw - 0.5) * 2);
     if (pulling) {
-      this.gauge.position.copy(V(LAUNCH.x + dy * 0.75, LAUNCH.y - dx * 0.75 - 0.2));
+      this.gauge.position.copy(V(LAUNCH.x + dy * (r + 0.6), LAUNCH.y - dx * (r + 0.6) - 0.2));
       this.gaugeFill.scale.y = Math.max(0.02, pw);
       this.gaugeFill.position.y = Math.max(0.02, pw) / 2;
       this.gaugeFill.material.color.copy(powerColor);
     }
 
-    // 회전: 스톤 손잡이가 세기만큼 제자리에서 돈다 (시계 = +)
-    this.spinAngle = (this.spinAngle ?? 0) + game.spin * 5 * (this.lastDt ?? 0.016);
-    this.previewStone.userData.handle.rotation.y = -this.spinAngle;
+    // 회전: 스톤이 세기만큼 제자리에서 천천히 돈다 (시계 = +). 회전을 끄면 똑바로 돌아온다
+    this.spinAngle = game.spin ? (this.spinAngle ?? 0) + game.spin * 2 * (this.lastDt ?? 0.016) : 0;
+    this.previewStone.rotation.y = -this.spinAngle;
 
     // 방향 화살표: 회전 고리 바깥에서 시작. 파워 단계에서는 세기만큼 길어지고 색이 바뀐다
-    const start = { x: stone.x + dx * r * 3, y: stone.y + dy * r * 3 };
+    const start = { x: stone.x + dx * (r * 1.4 + 0.2), y: stone.y + dy * (r * 1.4 + 0.2) };
     const len = pulling ? 0.6 + 3 * pw : 1.2;
     const tip = { x: start.x + dx * len, y: start.y + dy * len };
     placeStrip(this.aimShaft, start, tip, pulling ? 0.09 : 0.06, 0.015);
@@ -507,12 +535,12 @@ export class Renderer {
       m.material.opacity = aimOpacity;
     }
 
-    this.updateSpinArc(game.spin, true, stone, 0.95);
+    this.updateSpinArc(game.spin, true, stone, 0.95, r);
   }
 
   /** 회전 고리: 스톤에 딱 붙어서, 길이·두께 = 세기, 화살촉 = 방향, 색 = 시계(주황)/반시계(청록) */
-  updateSpinArc(spin, visible, center = LAUNCH, opacity = 0.95) {
-    const key = visible ? Math.round(spin * 100) : null;
+  updateSpinArc(spin, visible, center = LAUNCH, opacity = 0.95, r = this.cfg.stoneRadius) {
+    const key = visible ? `${Math.round(spin * 100)}:${r.toFixed(3)}` : null;
     if (key !== this.spinKey) {
       this.spinKey = key;
       if (this.spinArc) {
@@ -520,11 +548,10 @@ export class Renderer {
         this.spinArc.geometry.dispose();
         this.spinArc = null;
       }
-      if (visible && key !== 0) {
-        const r = this.cfg.stoneRadius;
+      if (visible && spin !== 0) {
         const a = Math.abs(spin);
         const len = a * Math.PI * 1.6;
-        const R0 = r * 1.4;
+        const R0 = r + 0.08;
         const R1 = R0 + 0.025 + 0.07 * a;
         // RingGeometry 각도는 위에서 볼 때 반시계 방향. 시계(+)는 시작점을 len만큼 당겨서 그린다.
         const startA = spin > 0 ? Math.PI / 2 - len : Math.PI / 2;
@@ -591,15 +618,18 @@ export class Renderer {
     this.intensityRing.visible = this.melt.visible = sweeping && s > 0.02;
     if (this.intensityRing.visible) {
       const p = { x: lerp(cur.prevX, cur.x, alpha), y: lerp(cur.prevY, cur.y, alpha) };
+      fitRing(this.intensityRing, cur.radius + 0.04, cur.radius + 0.16);
       this.intensityRing.position.copy(V(p.x, p.y, 0.01));
       this.intensityRing.geometry.setDrawRange(0, Math.max(1, Math.round(48 * s)) * 6);
       this.intensityRing.material.color.copy(C.low).lerp(C.good, s);
       // 스톤 앞 얼음이 녹는 띠: 세게 쓸수록 진하고 길다
       const sp = Math.hypot(cur.vx, cur.vy) || 1;
       const d = { x: cur.vx / sp, y: cur.vy / sp };
-      const a = { x: p.x + d.x * cfg.stoneRadius, y: p.y + d.y * cfg.stoneRadius };
+      const front = stoneExtent(cur, d.x, d.y, cfg);
+      const half = Math.max(stoneExtent(cur, d.y, -d.x, cfg), stoneExtent(cur, -d.y, d.x, cfg));
+      const a = { x: p.x + d.x * front, y: p.y + d.y * front };
       const b = { x: a.x + d.x * (0.4 + 0.8 * s), y: a.y + d.y * (0.4 + 0.8 * s) };
-      placeStrip(this.melt, a, b, cfg.stoneRadius * 2.2, 0.007);
+      placeStrip(this.melt, a, b, half * 2.2, 0.007);
       this.melt.material.opacity = 0.15 + 0.5 * s;
     }
 
@@ -614,11 +644,14 @@ export class Renderer {
         nd = d;
         near = m;
       }
-      bodyD = Math.min(bodyD, Math.hypot(m.x - cp.x, m.y - cp.y) - cfg.stoneRadius - cfg.bodyJudgeRadius);
+      const md = Math.hypot(m.x - cp.x, m.y - cp.y) || 1;
+      bodyD = Math.min(bodyD, md - stoneExtent(m, (cp.x - m.x) / md, (cp.y - m.y) / md, cfg) - cfg.bodyJudgeRadius);
     }
     const f = game.frame;
     this.cushionWarn.visible = !!near && (f.cushion || f.contactTicks > 0);
     if (this.cushionWarn.visible) {
+      const outer = stoneExtent(near, (cp.bx - near.x) / (nd || 1), (cp.by - near.y) / (nd || 1), cfg) + broomJudgeRadius(cfg) + cfg.cushionWidth;
+      fitRing(this.cushionWarn, outer - 0.025, outer);
       this.cushionWarn.position.copy(V(lerp(near.prevX, near.x, alpha), lerp(near.prevY, near.y, alpha), 0.012));
       this.cushionWarn.material.color.copy(f.contactTicks > 0 ? C.danger : C.caution);
       this.cushionWarn.material.opacity = 0.6 + 0.4 * Math.sin(this.time * 25);

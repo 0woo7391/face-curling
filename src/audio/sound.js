@@ -128,9 +128,12 @@ export class Sound {
           this.tone({ freq: 620, type: 'square', gain: 0.06, decay: 0.06 });
           break;
         case 'collision': {
-          const k = Math.min(1, e.impulse / 3);
-          this.tone({ freq: 1900, freqEnd: 1100, type: 'triangle', gain: 0.08 + 0.3 * k, decay: 0.06 });
-          this.tone({ freq: 820, freqEnd: 700, gain: 0.06 + 0.22 * k, decay: 0.16 });
+          // 무거운(큰) 스톤끼리일수록 소리가 낮고 길고 크다. mass = 환산 질량, 0.1 ≈ 작은 부위끼리
+          const heavy = Math.min(1, Math.max(0, (e.mass ?? 0.1) - 0.05) / 0.15);
+          const k = Math.min(1, (e.impulse / 3) * (0.6 + 0.8 * heavy));
+          const low = 1 - 0.45 * heavy;
+          this.tone({ freq: 1900 * low, freqEnd: 1100 * low, type: 'triangle', gain: 0.08 + 0.3 * k, decay: 0.06 + 0.06 * heavy });
+          this.tone({ freq: 820 * low, freqEnd: 700 * low, gain: 0.06 + 0.22 * k, decay: 0.16 + 0.2 * heavy });
           this.burst({ freq: 4000, filter: 'highpass', gain: 0.05 + 0.15 * k, decay: 0.03 });
           break;
         }

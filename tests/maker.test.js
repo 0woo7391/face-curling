@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { convexHull, grow, centroid, partPolygons, autoCrop, indicesOf } from '../src/maker/geometry.js';
 import { boxBlur, dilate, alphaStats, inpaint } from '../src/maker/imageops.js';
+import { polygonArea } from '../src/core/shape.js';
 
 describe('geometry', () => {
   it('볼록 껍질은 안쪽 점을 버린다', () => {
@@ -29,7 +30,7 @@ describe('geometry', () => {
     lm[61] = { x: 0.8, y: 0.15 };
     lm[62] = { x: 0.8, y: 0.9 };
     lm[63] = { x: 0.2, y: 0.9 };
-    const { polygons, faceBox } = partPolygons(lm, {
+    const { polygons, tight, faceBox } = partPolygons(lm, {
       eyeA: conn([10, 11, 12, 13]), eyeB: conn([20, 21, 22, 23]),
       browA: conn([30, 31, 32]), browB: conn([40, 41, 42]),
       lips: conn([50, 51, 52, 53]), oval: conn([60, 61, 62, 63]),
@@ -38,6 +39,8 @@ describe('geometry', () => {
     expect(centroid(polygons.right_eye).x).toBeGreaterThan(0.5);
     expect(centroid(polygons.left_brow).x).toBeLessThan(0.5);
     expect(faceBox).toMatchObject({ x0: 0.2, x1: 0.8 });
+    // 스톤 모양용 윤곽은 지우기 마스크보다 작다
+    for (const id of ['left_eye', 'right_eye', 'left_brow', 'right_brow', 'mouth']) expect(polygonArea(tight[id])).toBeLessThan(polygonArea(polygons[id])); // 코는 이 가짜 랜드마크에서 넓이 0
     expect(indicesOf(conn([1, 2, 3]))).toEqual([1, 2, 3]);
   });
   it('autoCrop은 얼굴을 가운데 두는 정사각형', () => {

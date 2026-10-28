@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import { newGame, throwPart, sweepBot, runUntil, settledOrDone } from './helpers.js';
 import { FixedStepper } from '../src/core/stepper.js';
+import { separation } from '../src/core/shape.js';
 
 describe('Game 흐름', () => {
   it('같은 입력이면 같은 결과 (재현성)', async () => {
@@ -24,7 +25,8 @@ describe('Game 흐름', () => {
     runUntil(g2, settledOrDone(g2), sweepBot(g2));
     expect(g2.stats.burnsBody + g2.stats.burnsBroom).toBe(0);
     expect(g2.stats.lastThrow.avgSweep).toBeGreaterThan(0.3);
-    expect(g2.sim.stones.get('nose').y).toBeGreaterThan(g1.sim.stones.get('nose').y + 0.5);
+    // 실제 크기 코는 앞쪽이 길어 봇이 스톤 앞에 늦게 자리 잡는다 (약 +0.49 m)
+    expect(g2.sim.stones.get('nose').y).toBeGreaterThan(g1.sim.stones.get('nose').y + 0.3);
   });
 
   it('효율 영역 밖에서 연타만 하면 거리 변화 없음', async () => {
@@ -60,16 +62,17 @@ describe('Game 흐름', () => {
     throwPart(g, 'nose', { power: 0.6 });
     runUntil(g, settledOrDone(g));
     const nosePos = { x: g.sim.stones.get('nose').x, y: g.sim.stones.get('nose').y };
-    throwPart(g, 'mouth', { power: 0.8 });
+    // 입은 폭이 넓어 몸이 먼저 닿으므로 폭이 좁은 눈으로 빗자루 번드를 낸다
+    throwPart(g, 'left_eye', { power: 0.8 });
     // 빗자루를 스톤 경로 정면 5m 앞에 세워 둔다
     g.enqueue({ type: 'moveAbs', x: -g.cfg.broomReach, y: 5 });
     runUntil(g, () => g.state === 'BURN_RESOLVE');
     expect(g.burn.cause).toBe('broom');
     runUntil(g, settledOrDone(g));
-    expect(g.parts.find((p) => p.id === 'mouth').status).toBe('burned');
-    expect(g.sim.stones.has('mouth')).toBe(false);
+    expect(g.parts.find((p) => p.id === 'left_eye').status).toBe('burned');
+    expect(g.sim.stones.has('left_eye')).toBe(false);
     expect(g.sim.stones.get('nose')).toMatchObject(nosePos);
-    expect(g.selectPart('mouth')).toBe(false);
+    expect(g.selectPart('left_eye')).toBe(false);
   });
 
   it('연습 모드 번드: 같은 부위 재투구', async () => {
@@ -167,22 +170,24 @@ describe('이벤트 스트림', () => {
 });
 
 describe('사진 얼굴', () => {
-  it('정답이 가까우면 퍽 반지름을 줄여 동시 배치를 가능하게 하고, 기본 설정은 그대로 둔다', async () => {
+  it('정답이 가까우면 스톤 모양을 같은 비율로 줄여 정답 자리끼리 겹치지 않게 한다', async () => {
     const g = await newGame();
-    const base = g.cfg.stoneRadius;
-    expect(g.cfg.stoneRadius).toBe(g.baseCfg.stoneRadius);
+    expect(g.shapeScale).toBe(1);
     const anchor = (x, y) => ({ anchor: { x, y } });
     g.setFace({
       faceBox: { x0: 0.25, y0: 0.15, x1: 0.75, y1: 0.85 },
       parts: { left_brow: anchor(0.4, 0.37), right_brow: anchor(0.6, 0.37), left_eye: anchor(0.41, 0.415), right_eye: anchor(0.6, 0.415), nose: anchor(0.5, 0.52), mouth: anchor(0.5, 0.64) },
     });
-    expect(g.cfg.stoneRadius).toBeLessThan(base);
-    expect(g.baseCfg.stoneRadius).toBe(base);
-    expect(g.layoutReport().conflicts).toEqual([]);
+    expect(g.shapeScale).toBeLessThan(1);
+    const placed = g.parts.map((p) => {
+      const at = g.board.qToWorld(p.q);
+      return p.hull.map((v) => ({ x: at.x + v.x, y: at.y + v.y }));
+    });
+    for (let i = 0; i < placed.length; i++) for (let j = i + 1; j < placed.length; j++) expect(separation(placed[i], placed[j])).toBeGreaterThanOrEqual(g.cfg.layoutMargin - 1e-6);
     expect(g.parts.find((p) => p.id === 'left_eye').q).toEqual({ x: 0.41, y: 0.415 });
     expect(g.faceDiagonal).toBeCloseTo(Math.hypot(0.5, 0.7));
     g.setFace(null);
-    expect(g.cfg.stoneRadius).toBe(base);
+    expect(g.shapeScale).toBe(1);
   });
 });
 

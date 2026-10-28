@@ -12,7 +12,10 @@ export const DEFAULTS = Object.freeze({
   restitution: 0.88,
   stopSpeed: 0.03,
   stopHoldTicks: 10,
-  spinVisualRate: 3, // 손잡이 시각 회전 속도 (rad/s, spin=1 기준)
+  spinTurnRate: 0.52, // 회전 1(●●)일 때 진행 1 m당 도는 각도 (rad) — 24 m에서 약 2바퀴, ●는 약 1바퀴
+  angularDamping: 0.8, // 충돌로 생긴 회전이 줄어드는 정도
+  tiltPenalty: 0.3, // 똑바로에서 90° 기울 때마다 점수에서 빼는 비율 (180° = 0.6)
+  minShapeScale: 0.5, // 정답 자리끼리 겹칠 때 스톤 모양을 줄이는 하한
 
   // ── 투구 (3.7) ──
   minLaunchSpeed: 2.0,

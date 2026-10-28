@@ -3,8 +3,15 @@
 // 빗자루: 세 겹 쿠션 — ① 축소 판정 원 + 쿠션 구간(경고만) ② 자동 회피 보조 ③ 연속 graceTicks 겹침 시에만 번드.
 // 정지한 스톤은 판정하지 않는다.
 import { broomJudgeRadius } from './sweep.js';
+import { stoneExtent } from './shape.js';
 
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+
+/** 스톤 중심에서 점 p 쪽 가장자리까지의 거리 (모양 스톤은 방향마다 다르다) */
+function edgeToward(st, p, cfg) {
+  const d = dist(st, p) || 1;
+  return stoneExtent(st, (p.x - st.x) / d, (p.y - st.y) / d, cfg);
+}
 
 export class BurnMonitor {
   constructor(cfg) {
@@ -22,16 +29,15 @@ export class BurnMonitor {
    */
   update(body, broom, movingStones) {
     const { cfg } = this;
-    const r = cfg.stoneRadius;
-    const contact = r + broomJudgeRadius(cfg);
     const res = { burn: null, cushion: false, contactStarted: false, contactTicks: 0 };
     const seen = new Set();
 
     for (const st of movingStones) {
       seen.add(st.id);
-      if (dist(body, st) < cfg.bodyJudgeRadius + r) res.burn ??= { cause: 'body', stoneId: st.id };
+      if (dist(body, st) < cfg.bodyJudgeRadius + edgeToward(st, body, cfg)) res.burn ??= { cause: 'body', stoneId: st.id };
 
       const d = dist(broom, st);
+      const contact = edgeToward(st, broom, cfg) + broomJudgeRadius(cfg);
       if (d < contact) {
         const n = (this.overlap.get(st.id) ?? 0) + 1;
         this.overlap.set(st.id, n);
@@ -56,7 +62,7 @@ export class BurnMonitor {
  * @param stone    가장 가까운 움직이는 스톤 또는 null
  */
 export function updateAssist(assist, broomRaw, stone, cfg, dt) {
-  const outer = cfg.stoneRadius + broomJudgeRadius(cfg) + cfg.cushionWidth;
+  const outer = stone ? edgeToward(stone, broomRaw, cfg) + broomJudgeRadius(cfg) + cfg.cushionWidth : 0;
   const step = cfg.assistSpeed * dt;
   let ax = assist.x;
   let ay = assist.y;

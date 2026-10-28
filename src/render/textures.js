@@ -43,28 +43,31 @@ export function faceBoardTexture(box) {
   return finish(c);
 }
 
-/** 퍽 윗면 데칼: 부위 아이콘. 회전하지 않는다 (명세 3.10: 얼굴 이미지는 정방향) */
-export function puckTexture(part) {
-  const N = 256;
+/**
+ * 기본 얼굴 스톤 윗면: 부위 색 모양 + 흰 테두리 + 아이콘. 캔버스 = 모양의 테두리 상자(texRect)
+ * shape는 로컬 m 좌표(y 위), 캔버스는 y 아래이므로 뒤집어 그린다.
+ */
+export function shapeTexture(part) {
+  const S = 256;
+  const { x0, y0, w, h } = part.texRect;
+  const k = S / Math.max(w, h);
   const c = document.createElement('canvas');
-  c.width = c.height = N;
+  c.width = Math.max(8, Math.round(w * k));
+  c.height = Math.max(8, Math.round(h * k));
   const g = c.getContext('2d');
   g.fillStyle = part.color;
   g.beginPath();
-  g.arc(N / 2, N / 2, N / 2 - 6, 0, Math.PI * 2);
+  part.shape.forEach((p, i) => g[i ? 'lineTo' : 'moveTo']((p.x - x0) * k, (y0 + h - p.y) * k));
+  g.closePath();
   g.fill();
   g.lineWidth = 10;
   g.strokeStyle = '#fff';
   g.stroke();
   g.textAlign = 'center';
   g.textBaseline = 'middle';
-  g.font = '110px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif';
+  g.font = `${Math.round(Math.min(c.width, c.height) * 0.55)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
   g.fillStyle = '#fff';
-  g.fillText(part.icon, N / 2, N / 2 - (part.side ? 18 : 0));
-  if (part.side) {
-    g.font = 'bold 64px system-ui, sans-serif';
-    g.fillText(part.side, N / 2, N / 2 + 72);
-  }
+  g.fillText(part.icon, (-x0) * k, (y0 + h) * k);
   return finish(c);
 }
 
@@ -82,31 +85,6 @@ export function labelTexture(text, color = '#ffffff') {
   g.textAlign = 'center';
   g.textBaseline = 'middle';
   g.fillText(text, 128, 37);
-  return finish(c);
-}
-
-/** 사진 부위 스티커를 얹은 퍽 윗면: 부위 색 테두리 + 흰 바탕 + 스티커(원 안에 맞춤) */
-export function stickerPuckTexture(part, sticker) {
-  const S = 256;
-  const c = document.createElement('canvas');
-  c.width = c.height = S;
-  const g = c.getContext('2d');
-  g.fillStyle = part.color;
-  g.beginPath();
-  g.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
-  g.fill();
-  g.fillStyle = '#fff';
-  g.beginPath();
-  g.arc(S / 2, S / 2, S / 2 - 18, 0, Math.PI * 2);
-  g.fill();
-  g.save();
-  g.clip();
-  const inner = (S - 44) * 0.92;
-  const k = inner / Math.max(sticker.width, sticker.height);
-  const w = sticker.width * k;
-  const h = sticker.height * k;
-  g.drawImage(sticker, (S - w) / 2, (S - h) / 2, w, h);
-  g.restore();
   return finish(c);
 }
 

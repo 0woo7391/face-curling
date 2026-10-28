@@ -8,7 +8,7 @@ import { TouchInput } from './input/touch.js';
 import { Hud } from './ui/hud.js';
 import { Sound } from './audio/sound.js';
 import { loadFace, saveFace, clearFace } from './maker/store.js';
-import { checkLayout, fitStoneRadius } from './core/scoring.js';
+import { buildShapes, defaultOutline } from './core/shape.js';
 import { createDebugPanel, loadSavedConfig, saveConfig } from './ui/debug.js';
 
 const debugHooks = { paused: false };
@@ -89,17 +89,16 @@ async function main() {
           clearFace();
         },
         layoutWarnings(face) {
-          // 정답 위치끼리 퍽이 겹치면 동시에 놓을 수 없다 (명세 5.3)
-          // 퍽 크기를 자동으로 줄인 뒤에도 겹치는 경우만 알린다
-          const parts = game.parts.map((p) => ({ ...p, q: face.parts[p.id]?.anchor ?? p.q }));
-          const fitted = Object.create(cfg);
-          fitted.stoneRadius = fitStoneRadius(parts, game.board, cfg);
-          const { conflicts } = checkLayout(parts, game.board, fitted);
-          const name = (id) => game.parts.find((p) => p.id === id).label;
+          // 정답 자리끼리 스톤 모양이 겹치면 동시에 놓을 수 없어 전체를 줄인다 (명세 5.3). 많이 줄어든 경우만 알린다
+          const src = game.parts.map((p) => {
+            const f = face.parts[p.id];
+            return f?.outline ? { id: p.id, q: f.anchor, outline: f.outline, rect: f.rect } : { id: p.id, q: p.q, outline: defaultOutline(p) };
+          });
+          const { scale } = buildShapes(src, game.board, cfg);
           const missing = game.parts.filter((p) => !face.parts[p.id]).map((p) => p.label);
           return [
             ...(missing.length ? [`찾지 못한 부위: ${missing.join('·')} (기본 위치 사용)`] : []),
-            ...conflicts.map((c) => `${name(c.a)}·${name(c.b)} 정답이 너무 붙어 있어요.`),
+            ...(scale < 0.8 ? [`부위끼리 너무 붙어 있어 일부 스톤을 ${Math.round(scale * 100)}% 크기까지 줄였어요.`] : []),
           ];
         },
       });
@@ -168,7 +167,7 @@ function haptics(events) {
   if (!navigator.vibrate) return;
   for (const e of events) {
     if (e.type === 'stroke' && e.valid) navigator.vibrate(8);
-    else if (e.type === 'collision') navigator.vibrate(20);
+    else if (e.type === 'collision') navigator.vibrate(Math.round(15 + 45 * Math.min(1, (e.mass ?? 0.1) / 0.2)));
     else if (e.type === 'burn') navigator.vibrate([60, 40, 120]);
   }
 }

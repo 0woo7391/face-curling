@@ -73,6 +73,15 @@ export function partPolygons(lm, C) {
       nose: grow(hull(NOSE_INDICES), 1.25, 1.12, s * 0.02),
       mouth: grow(hull(indicesOf(C.lips)), 1.12, 1.25, s * 0.012),
     },
+    // 스톤 모양용: 지우기 마스크처럼 크게 늘리지 않은 실제 부위 윤곽 (늘린 눈썹·눈 마스크는 서로 겹친다)
+    tight: {
+      left_brow: grow(browL, 1, 1, s * 0.004),
+      right_brow: grow(browR, 1, 1, s * 0.004),
+      left_eye: grow(eyeL, 1.05, 1.1, s * 0.004),
+      right_eye: grow(eyeR, 1.05, 1.1, s * 0.004),
+      nose: grow(hull(NOSE_INDICES), 1, 1, s * 0.005),
+      mouth: grow(hull(indicesOf(C.lips)), 1, 1.05, s * 0.005),
+    },
     faceBox: face,
   };
 }

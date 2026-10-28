@@ -1,6 +1,7 @@
 // 스위핑 판정 (명세 3.8.3, 3.8 효율 계산 구조).
 // 스위핑 강도 s = 입력 효율 × 위치 효율 × 속도 계수, 짧은 접촉 직후에는 0.
 import { msToTicks } from '../config.js';
+import { stoneExtent } from './shape.js';
 
 export const broomJudgeRadius = (cfg) => cfg.broomVisualRadius * cfg.broomJudgeScale;
 
@@ -23,7 +24,7 @@ export function sweepPositionEfficiency(broom, stone, cfg) {
   const lat = Math.abs(rx * dy - ry * dx);
   if (lat > cfg.sweepZoneHalfWidth) return 0;
 
-  const contact = cfg.stoneRadius + broomJudgeRadius(cfg);
+  const contact = stoneExtent(stone, dx, dy, cfg) + broomJudgeRadius(cfg);
   const best = contact + cfg.cushionWidth;
   const end = best + cfg.sweepZoneLength;
   const latFactor = 1 - (0.5 * lat) / cfg.sweepZoneHalfWidth;

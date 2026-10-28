@@ -152,12 +152,16 @@ export class FaceMaker {
       this.say('이 범위에서는 얼굴을 찾지 못했어요. 조금 넓게 잘라 주세요.', 'error');
       return;
     }
-    const { polygons, faceBox } = partPolygons(found.landmarks, CONNECTIONS);
+    const { polygons, tight, faceBox } = partPolygons(found.landmarks, CONNECTIONS);
     this.cropCanvas = crop;
     this.faceBox = faceBox;
     this.polygons = polygons;
     this.masks = {};
-    for (const p of FACE_PARTS) this.masks[p.id] = polygonMask(polygons[p.id]);
+    this.tightMasks = {};
+    for (const p of FACE_PARTS) {
+      this.masks[p.id] = polygonMask(polygons[p.id]);
+      this.tightMasks[p.id] = polygonMask(tight[p.id]);
+    }
     this.undo = [];
     this.current = 'left_brow';
     this.erase = false;
@@ -272,7 +276,7 @@ export class FaceMaker {
     this.foot.innerHTML = '';
     // 화면이 먼저 바뀌도록 한 프레임 쉬고 계산
     setTimeout(() => {
-      this.face = buildFace(this.cropCanvas, this.masks, this.faceBox);
+      this.face = buildFace(this.cropCanvas, this.masks, this.faceBox, this.tightMasks);
       this.recomp = recomposite(this.face.empty, this.cropCanvas, this.masks);
       const warns = this.layoutWarnings(this.face);
       this.say(warns.length ? warns.join(' ') : '', warns.length ? 'warn' : '');

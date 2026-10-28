@@ -2,6 +2,7 @@ import R from '@dimforge/rapier2d-compat';
 import { createConfig } from '../src/config.js';
 import { Game } from '../src/core/game.js';
 import { broomJudgeRadius } from '../src/core/sweep.js';
+import { stoneExtent } from '../src/core/shape.js';
 
 let ready = null;
 export async function rapier() {
@@ -37,13 +38,15 @@ export function sweepBot(game, { strokeEvery = 8, ahead = 0.15 } = {}) {
     const sp = Math.hypot(s.vx, s.vy);
     const dx = s.vx / sp;
     const dy = s.vy / sp;
-    const best = cfg.stoneRadius + broomJudgeRadius(cfg) + cfg.cushionWidth + ahead;
+    const best = stoneExtent(s, dx, dy, cfg) + broomJudgeRadius(cfg) + cfg.cushionWidth + ahead;
     const bx = s.x + dx * best;
     const by = s.y + dy * best;
     // 빗자루가 아직 스톤 앞에 있지 않으면 경로 옆으로 비켜서 먼저 앞질러 간다
     const b = game.broom;
     const along = (b.x - s.x) * dx + (b.y - s.y) * dy;
-    if (along < best) game.enqueue({ type: 'moveAbs', x: bx - cfg.broomReach - 0.5, y: by + 1 });
+    // 몸이 스톤 옆 가장자리에 닿지 않도록 스톤 폭만큼 더 비켜선다
+    const side = stoneExtent(s, -1, 0, cfg);
+    if (along < best) game.enqueue({ type: 'moveAbs', x: bx - cfg.broomReach - side - 0.5, y: by + 1 });
     else game.enqueue({ type: 'moveAbs', x: bx - cfg.broomReach, y: by });
     if (++n % strokeEvery === 0) {
       game.enqueue({ type: 'press', button: next });
