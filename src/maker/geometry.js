@@ -4,8 +4,9 @@
 /** MediaPipe 연결 목록 [{start,end}] → 고유 랜드마크 번호 */
 export const indicesOf = (connections) => [...new Set(connections.flatMap((c) => [c.start, c.end]))];
 
-// 코는 MediaPipe가 연결 목록을 주지 않아 직접 고른다: 콧망울·콧구멍·코끝 중심, 콧대 위쪽은 제외 (명세 3.4: 코 마스크는 좁게)
-export const NOSE_INDICES = [195, 5, 4, 1, 2, 98, 97, 326, 327, 64, 294, 48, 278, 219, 439, 129, 358];
+// 코는 MediaPipe가 연결 목록을 주지 않아 직접 고른다: 콧대(눈 사이 아래)부터 콧망울·콧구멍 아래까지.
+// 좁게 잡으면 빈 얼굴에 콧대 그림자·콧구멍이 남고 코 스톤이 작아진다.
+export const NOSE_INDICES = [168, 6, 197, 195, 5, 4, 1, 2, 98, 97, 326, 327, 64, 294, 48, 278, 219, 439, 129, 358, 102, 331, 49, 279, 240, 460];
 
 export function convexHull(points) {
   const pts = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
@@ -67,9 +68,9 @@ export function partPolygons(lm, C) {
     polygons: {
       left_brow: grow(browL, 1.08, 1.6, s * 0.012),
       right_brow: grow(browR, 1.08, 1.6, s * 0.012),
-      left_eye: grow(eyeL, 1.25, 1.9, s * 0.012),
-      right_eye: grow(eyeR, 1.25, 1.9, s * 0.012),
-      nose: grow(hull(NOSE_INDICES), 1.12, 1.08, s * 0.01),
+      left_eye: grow(eyeL, 1.3, 2.1, s * 0.015),
+      right_eye: grow(eyeR, 1.3, 2.1, s * 0.015),
+      nose: grow(hull(NOSE_INDICES), 1.25, 1.12, s * 0.02),
       mouth: grow(hull(indicesOf(C.lips)), 1.12, 1.25, s * 0.012),
     },
     faceBox: face,

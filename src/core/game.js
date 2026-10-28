@@ -60,6 +60,7 @@ export class Game {
     this.burnMon = new BurnMonitor(this.cfg);
     this.queue = [];
     this.joy = { x: 0, y: 0 }; // 터치 조이스틱 기울기 (-1..1, y+ = 진행 방향)
+    this.hand = 0; // 흔드는 손의 좌우 위치 (-1..1) — 흔들기 모드에서 빗자루가 따라간다
     this.checkpoint = null;
     this.burn = null;
     this.burnTimer = 0;
@@ -178,6 +179,7 @@ export class Game {
     this.resetCharacter();
     this.queue.length = 0;
     this.joy = { x: 0, y: 0 };
+    this.hand = 0;
     this.state = 'SWEEP';
     this.push({ type: 'launch', partId: this.currentPartId, speed: Math.hypot(v.x, v.y), spin: this.spin, x: LAUNCH.x, y: LAUNCH.y });
   }
@@ -205,6 +207,7 @@ export class Game {
       if (ev.type === 'move') this.character.moveTargetBy(ev.dx * sens, -ev.dy * sens * this.cfg.forwardSensitivityScale, this.bounds);
       else if (ev.type === 'moveAbs') this.character.setTarget(ev.x, ev.y, this.bounds);
       else if (ev.type === 'joy') this.joy = { x: ev.x, y: ev.y };
+      else if (ev.type === 'hand') this.hand = Math.max(-1, Math.min(1, ev.x));
       else if (ev.type === 'press' && this.state === 'SWEEP') {
         const r = this.sweep.press(ev.button, this.tickCount);
         if (r === 'rejected-order' || r === 'rejected-busy') this.push({ type: 'reject', reason: r });
@@ -225,9 +228,15 @@ export class Game {
     const ref = cur && cur.status === 'moving' ? cur : nearest(moving, this.character.pos);
     this.character.update(dt, ref ? ref.x : null);
 
-    // 빗자루 = 몸 기준 위치 + 스트로크 왕복 + 자동 회피 보조
+    // 빗자루 = 몸 기준 위치 + 왕복 + 자동 회피 보조
+    //   흔들기(보조) 모드: 손의 좌우 위치대로 스톤 진행 방향에 가로로 / 직접 이동: 스트로크 애니메이션대로 진행 방향 앞뒤로
     const base = this.character.broomBase();
-    const raw = { x: base.x, y: base.y + this.sweep.strokeOffset(this.tickCount) * this.cfg.strokeAmp };
+    let raw;
+    if (assist && cur && cur.status === 'moving') {
+      const sp = Math.hypot(cur.vx, cur.vy) || 1;
+      const sw = this.hand * this.cfg.sweepSwing;
+      raw = { x: base.x + (cur.vy / sp) * sw, y: base.y - (cur.vx / sp) * sw };
+    } else raw = { x: base.x, y: base.y + this.sweep.strokeOffset(this.tickCount) * this.cfg.strokeAmp };
     this.character.assist = updateAssist(this.character.assist, raw, nearest(moving, raw), this.cfg, dt);
     this.broomPrev = this.broom;
     this.broom = { x: raw.x + this.character.assist.x, y: raw.y + this.character.assist.y };
@@ -249,7 +258,8 @@ export class Game {
     let posEff = 0;
     let speedFactor = 0;
     if (this.state === 'SWEEP' && cur && cur.status === 'moving') {
-      posEff = sweepPositionEfficiency(this.broom, cur, this.cfg);
+      // 흔들기 모드에서는 좌우 흔들림 자체가 쓸기 동작이므로, 흔들림의 중심(몸 기준 빗자루 위치)으로 효율을 잰다
+      posEff = sweepPositionEfficiency(assist ? base : this.broom, cur, this.cfg);
       speedFactor = Math.min(1, Math.hypot(cur.vx, cur.vy) / this.cfg.sweepMinSpeed);
     }
     this.frame.posEff = posEff;

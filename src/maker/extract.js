@@ -56,19 +56,45 @@ export function brush(alpha, size, x, y, radius, erase) {
   }
 }
 
-/** 빈 얼굴: 모든 부위 마스크의 합을 조금 넓혀 지우고 주변으로 채운다 */
+/**
+ * 빈 얼굴: 부위 마스크 합을 넓혀 딱 잘라 지우고 주변 피부로 채운 뒤, 더 넓은 범위를 강하게 흐린다.
+ * - 지우는 구멍은 경계가 딱딱해야 한다: 부드러운 경계면 속눈썹·눈썹 끝 어두운 픽셀이 채우기에 섞여 회색 얼룩이 된다.
+ * - 바깥 띠까지 흐려야 눈가 주름·콧대 그림자 같은 남은 선이 사라지고 "지운 자리"가 확실히 보인다.
+ */
 export function makeEmptyFace(crop, masks) {
   const size = crop.width;
   const union = new Uint8ClampedArray(size * size);
   for (const m of Object.values(masks)) for (let i = 0; i < union.length; i++) union[i] = Math.max(union[i], m[i]);
-  // 마스크 경계 바깥 몇 픽셀까지 지워야 눈썹 끝·속눈썹 테두리가 남지 않는다
-  const fill = boxBlur(dilate(union, size, size, 4), size, size, 3);
+  const hole = dilate(threshold(union, 16), size, size, Math.round(size * 0.02));
   const g = crop.getContext('2d');
   const img = g.getImageData(0, 0, size, size);
-  const out = inpaint(img.data, fill, size, size, { noise: 3 });
+  const filled = inpaint(img.data, hole, size, size, { noise: 0 });
+  // 흐림 띠: 구멍보다 넓게, 경계는 길게 풀어 준다
+  const zone = boxBlur(dilate(hole, size, size, Math.round(size * 0.03)), size, size, Math.round(size * 0.03));
+  const soft = blurRGB(filled, size, size, Math.round(size * 0.025));
+  const out = new Uint8ClampedArray(filled.length);
+  for (let i = 0; i < size * size; i++) {
+    const k = zone[i] / 255;
+    for (let c = 0; c < 3; c++) out[i * 4 + c] = filled[i * 4 + c] * (1 - k) + soft[i * 4 + c] * k;
+    out[i * 4 + 3] = 255;
+  }
   const c = canvas(size);
   c.getContext('2d').putImageData(new ImageData(out, size, size), 0, 0);
   return c;
+}
+
+const threshold = (a, t) => a.map((v) => (v > t ? 255 : 0));
+
+/** RGBA의 RGB만 박스 블러를 두 번 (가우시안에 가깝게) */
+function blurRGB(rgba, w, h, r) {
+  const out = Uint8ClampedArray.from(rgba);
+  const ch = new Uint8ClampedArray(w * h);
+  for (let c = 0; c < 3; c++) {
+    for (let i = 0; i < w * h; i++) ch[i] = rgba[i * 4 + c];
+    const b = boxBlur(boxBlur(ch, w, h, r), w, h, r);
+    for (let i = 0; i < w * h; i++) out[i * 4 + c] = b[i];
+  }
+  return out;
 }
 
 /**

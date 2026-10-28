@@ -5,9 +5,8 @@ import { SweepController, sweepPositionEfficiency, broomJudgeRadius } from '../s
 const cfg = createConfig();
 
 describe('SweepController', () => {
-  it('밀기→당기기 순서만 인정하고 같은 버튼 반복·진행 중 입력은 거부한다', () => {
+  it('첫 스트로크는 어느 쪽이든, 그 뒤로는 번갈아만 인정하고 같은 쪽 반복·진행 중 입력은 거부한다', () => {
     const c = new SweepController(cfg);
-    expect(c.press(2, 0)).toBe('rejected-order');
     expect(c.press(0, 0)).toBe('started');
     expect(c.press(0, 1)).toBe('rejected-busy'); // 같은 버튼 반복
     for (let t = 1; t <= 10; t++) c.update(t, 1, 1);

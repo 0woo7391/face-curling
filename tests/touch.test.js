@@ -1,13 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { SwipeStrokeDetector } from '../src/input/swipe.js';
+import { SwipeStrokeDetector, HandTracker } from '../src/input/swipe.js';
 import { newGame, throwPart, runUntil } from './helpers.js';
 
 describe('SwipeStrokeDetector', () => {
-  it('방향이 바뀔 때마다 한 번: 위 = 밀기, 아래 = 당기기', () => {
+  it('방향이 바뀔 때마다 한 번: 값이 커지는 쪽(오른쪽) = push, 작아지는 쪽 = pull', () => {
     const d = new SwipeStrokeDetector(14);
     d.start(500);
     const out = [];
-    for (const y of [495, 485, 470, 450, 460, 480, 490, 470, 440]) {
+    for (const y of [505, 515, 530, 550, 540, 520, 510, 530, 560]) {
       const s = d.move(y);
       if (s) out.push(s);
     }
@@ -18,7 +18,7 @@ describe('SwipeStrokeDetector', () => {
     const d = new SwipeStrokeDetector(14);
     d.start(500);
     const out = [];
-    for (const y of [480, 400, 300, 305, 296, 309, 300]) {
+    for (const y of [520, 600, 700, 695, 704, 691, 700]) {
       const s = d.move(y);
       if (s) out.push(s);
     }
@@ -56,5 +56,17 @@ describe('조이스틱', () => {
     runUntil(g, () => g.state === 'PART_SELECT');
     throwPart(g, 'mouth', { power: 0.3 });
     expect(g.joy).toEqual({ x: 0, y: 0 });
+  });
+});
+
+describe('HandTracker', () => {
+  it('-1..1로 제한되고, 한쪽으로 흘러가도 기준점이 따라온다', () => {
+    const h = new HandTracker(40);
+    h.start(100);
+    expect(h.move(140)).toBeGreaterThan(0.8);
+    expect(h.move(0)).toBe(-1);
+    let v = 0;
+    for (let i = 0; i < 200; i++) v = h.move(300);
+    expect(Math.abs(v)).toBeLessThan(0.05);
   });
 });

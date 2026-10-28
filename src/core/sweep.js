@@ -33,7 +33,8 @@ export function sweepPositionEfficiency(broom, stone, cfg) {
 }
 
 /**
- * 밀기(좌클릭) → 당기기(우클릭) 교대 스트로크 상태 기계.
+ * 교대 스트로크 상태 기계. 'push'/'pull'은 방향 두 개의 이름이다:
+ *   흔들기(기본): push = 오른쪽으로, pull = 왼쪽으로 / 직접 이동 마우스: push = 좌클릭, pull = 우클릭.
  * - 기대 순서와 다른 버튼은 인정하지 않는다.
  * - 애니메이션이 끝나기 strokeBufferMs 이내에 들어온 '다음 순서' 입력은 1개까지 보관했다가 이어서 시작한다.
  *   (조금 이른 입력 하나 때문에 이후 순서가 어긋나 스트로크 두 개를 잃는 것을 막음. 속도 상한은 그대로)
@@ -46,7 +47,7 @@ export class SweepController {
   }
 
   reset() {
-    this.expect = 'push';
+    this.expect = null; // 첫 스트로크는 어느 쪽이든 받고, 그 뒤로 번갈아
     this.anim = null;
     this.buffered = null;
     this.completed = null;
@@ -71,7 +72,7 @@ export class SweepController {
         this.buffered = kind;
         result = 'buffered';
       } else result = 'rejected-busy';
-    } else if (kind !== this.expect) result = 'rejected-order';
+    } else if (this.expect && kind !== this.expect) result = 'rejected-order';
     else {
       this.startStroke(kind, tick);
       result = 'started';

@@ -42,7 +42,8 @@ export const DEFAULTS = Object.freeze({
   bodyJudgeRadius: 0.22,
   broomReach: 0.75, // 몸 중심 ↔ 빗자루 머리 가로 거리
   broomVisualRadius: 0.16,
-  strokeAmp: 0.12, // 밀기/당기기 왕복 거리
+  strokeAmp: 0.12, // 직접 이동 모드: 밀기/당기기 왕복 거리 (진행 방향)
+  sweepSwing: 0.16, // 흔들기 모드: 손을 끝까지 흔들 때 빗자루가 스톤 앞에서 좌우로 움직이는 폭 (진행 방향에 가로)
   strokeDurationMs: 110,
   strokeBufferMs: 100, // 스트로크가 끝나기 이만큼 전에 들어온 다음 스트로크는 버리지 않고 이어서 시작
   strokeWindowMs: 750,

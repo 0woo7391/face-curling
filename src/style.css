@@ -123,7 +123,8 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #next-key b { width: 74px; padding: 8px 0 10px; text-align: center; font-size: 13px; color: var(--muted); background: var(--chip); border: 2px solid var(--chip-line); transition: background 0.08s, color 0.08s; }
 #next-key .l { border-radius: 20px 6px 6px 12px; }
 #next-key .r { border-radius: 6px 20px 12px 6px; }
-#next-key[data-expect="push"] .l, #next-key[data-expect="pull"] .r { background: var(--sticker); color: var(--ink); border-color: var(--sticker); }
+#next-key:is([data-expect="left"], [data-expect="any"]) .l, #next-key:is([data-expect="right"], [data-expect="any"]) .r { background: var(--sticker); color: var(--ink); border-color: var(--sticker); }
+#hud[data-assist="1"] #next-key b { width: 64px; font-size: 22px; padding: 4px 0 6px; }
 #next-key.hit b { animation: hit 0.18s ease-out; }
 #next-key.shake { animation: shake 0.25s; }
 @keyframes hit { 0% { box-shadow: 0 0 0 0 var(--good); } 100% { box-shadow: 0 0 0 10px transparent; } }
@@ -190,11 +191,12 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #hud[data-assist="1"] #touch-swipe { left: 10px; width: auto; height: 26%; }
 #touch-swipe {
   position: absolute; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); width: calc(50% - 20px); height: 32%;
-  flex-direction: column; justify-content: space-between; align-items: center; padding: 12px 0;
+  flex-direction: row; justify-content: space-between; align-items: center; padding: 0 18px;
   border: 3px dashed rgba(255, 255, 255, 0.3); border-radius: 22px; font-size: 15px; font-weight: 800; transition: background 0.08s;
 }
-#touch-swipe span { color: rgba(255, 255, 255, 0.3); transition: color 0.1s, transform 0.1s; }
-#touch-swipe[data-expect="push"] .up, #touch-swipe[data-expect="pull"] .down { color: #fff; transform: scale(1.25); }
+#touch-swipe span { font-size: 28px; color: rgba(255, 255, 255, 0.3); transition: color 0.1s, transform 0.1s; }
+#touch-swipe b { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.55); }
+#touch-swipe:is([data-expect="left"], [data-expect="any"]) .l, #touch-swipe:is([data-expect="right"], [data-expect="any"]) .r { color: #fff; transform: scale(1.25); }
 #touch-swipe[data-flash="push"] { background: rgba(118, 255, 3, 0.22); }
 #touch-swipe[data-flash="pull"] { background: rgba(79, 195, 247, 0.22); }
 #touch-joy { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.08); }

@@ -2,14 +2,16 @@
 // 투구(THROW): 새총 — 아무 곳이나 누른 채 아래로 당기면 반대 방향이 투구 방향, 당긴 길이가 파워. 놓으면 발사.
 //              손가락·마우스 모두 Pointer Events + setPointerCapture (캔버스 밖에서 놓아도 처리).
 // 스위핑
-//   보조 켬(기본): 버튼을 누른 채 위아래로 문지르기 = 밀기/당기기 (터치와 같은 동작). 마우스 잠금 없음.
+//   보조 켬(기본): 버튼을 누른 채(= 빗자루를 얼음에 댐) 좌우로 흔들기. 방향이 바뀔 때마다 한 번 쓸기,
+//                  손의 좌우 위치대로 빗자루가 스톤 앞에서 움직인다 (터치와 같은 동작). 마우스 잠금 없음.
 //   보조 끔(v1.2): Pointer Lock + movementX/Y로 월드 고정 목표점 이동, 좌클릭 밀기 → 우클릭 당기기.
 //                  버튼은 mousedown + e.button으로 받는다 — 다른 버튼을 누른 채 추가로 누르면 pointerdown이 오지 않기 때문.
-import { SwipeStrokeDetector } from './swipe.js';
+import { SwipeStrokeDetector, HandTracker } from './swipe.js';
 
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
 const AIM_SCALE = 0.5; // 당기는 각도 대비 투구 각도 — 작은 각도를 정밀하게
-const SCRUB_THRESHOLD = 10; // 마우스 문지르기 한 번으로 치는 최소 이동(px)
+const SCRUB_THRESHOLD = 10; // 흔들기 한 번으로 치는 최소 이동(px) — 손 떨림 무시
+const HAND_RANGE = 40; // 이만큼(px) 흔들면 빗자루가 끝까지
 
 export class MouseInput {
   constructor(canvas, game, renderer) {
@@ -69,8 +71,9 @@ export class MouseInput {
       this.game.setThrow(this.game.aimAngle, 0);
     } else if (this.sweeping && this.assist && e.pointerType === 'mouse') {
       this.canvas.setPointerCapture(e.pointerId);
-      this.scrub = { id: e.pointerId, det: new SwipeStrokeDetector(SCRUB_THRESHOLD) };
-      this.scrub.det.start(e.clientY);
+      this.scrub = { id: e.pointerId, det: new SwipeStrokeDetector(SCRUB_THRESHOLD), hand: new HandTracker(HAND_RANGE) };
+      this.scrub.det.start(e.clientX);
+      this.scrub.hand.start(e.clientX);
     }
   }
 
@@ -86,13 +89,17 @@ export class MouseInput {
       const pull = Math.hypot(dx, dy) / (this.canvas.clientHeight * this.game.cfg.maxPullFraction);
       this.game.setThrow(Math.atan2(-dx, dy) * AIM_SCALE, pull);
     } else if (this.scrub && e.pointerId === this.scrub.id) {
-      const s = this.scrub.det.move(e.clientY);
+      this.game.enqueue({ type: 'hand', x: this.scrub.hand.move(e.clientX) });
+      const s = this.scrub.det.move(e.clientX);
       if (s) this.game.enqueue({ type: 'press', button: s === 'push' ? 0 : 2 });
     }
   }
 
   onPointerUp(e) {
-    if (this.scrub && e.pointerId === this.scrub.id) this.scrub = null;
+    if (this.scrub && e.pointerId === this.scrub.id) {
+      this.scrub = null; // 버튼을 떼면 빗자루가 들린다
+      this.game.enqueue({ type: 'hand', x: 0 });
+    }
     if (!this.drag || e.pointerId !== this.drag.id) return;
     this.drag = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);

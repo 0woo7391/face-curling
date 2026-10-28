@@ -189,14 +189,18 @@ export class Hud {
     this.set('hint', $('hint'), this.hint(touch));
     const assist = !!g.cfg.sweepAssist;
     hud.dataset.assist = assist ? '1' : '';
-    this.set('nkL', $('next-key').querySelector('.l'), assist ? '▲ 밀기' : '좌클릭 밀기');
-    this.set('nkR', $('next-key').querySelector('.r'), assist ? '▼ 당기기' : '우클릭 당기기');
+    this.set('nkL', $('next-key').querySelector('.l'), assist ? '◀' : '좌클릭 밀기');
+    this.set('nkR', $('next-key').querySelector('.r'), assist ? '▶' : '우클릭 당기기');
     $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && st === 'PART_SELECT');
 
     // 다음 입력: 마우스는 버튼 그림, 터치는 스와이프 판의 화살표가 밝아진다
     $('next-key').hidden = st !== 'SWEEP' || touch;
-    $('next-key').dataset.expect = g.sweep.expect;
-    $('touch-swipe').dataset.expect = g.sweep.expect;
+    // 다음에 흔들 쪽: 흔들기는 push = 오른쪽, 직접 이동 마우스는 push = 좌클릭(왼쪽 칸). 첫 스트로크는 어느 쪽이든
+    const ex = g.sweep.expect;
+    const keySide = !ex ? 'any' : assist === (ex === 'push') ? 'right' : 'left';
+    const padSide = !ex ? 'any' : ex === 'push' ? 'right' : 'left';
+    $('next-key').dataset.expect = keySide;
+    $('touch-swipe').dataset.expect = padSide;
 
     $('minimap-frame').style.visibility = renderer.minimapVisible && app.screen === 'game' ? 'visible' : 'hidden';
     $('lock-overlay').hidden = !input.needsLock;
@@ -278,8 +282,8 @@ export class Hud {
         return g.power > 0 ? '놓으면 발사 · 위로 올리면 취소' : '아무 데나 누른 채 아래로 당겼다 놓기';
       case 'SWEEP':
         if (this.learned >= LEARN_STROKES) return '';
-        if (g.cfg.sweepAssist) return touch ? '화면을 위아래로 문질러 쓸기' : '버튼 누른 채 위아래로 문질러 쓸기';
-        return touch ? '왼쪽 = 이동 · 오른쪽 = 위아래로 문지르기' : '빗자루를 스톤 앞에 대고 좌·우 번갈아 클릭';
+        if (g.cfg.sweepAssist) return touch ? '화면을 좌우로 문질러 쓸기' : '버튼 누른 채 좌우로 흔들어 쓸기';
+        return touch ? '왼쪽 = 이동 · 오른쪽 = 좌우로 문지르기' : '빗자루를 스톤 앞에 대고 좌·우 번갈아 클릭';
       default:
         return '';
     }

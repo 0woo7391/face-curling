@@ -1,13 +1,14 @@
 // 터치 조작 (세로 화면 기본). 스위핑 중에만 동작한다.
-//   보조 켬(기본): 화면 어디서든 위아래로 문지르기 → 밀기/당기기
-//   보조 끔: 왼쪽 절반 = 누른 자리에 생기는 조이스틱(월드 고정 목표점 이동), 오른쪽 절반 = 문지르기
+//   보조 켬(기본): 화면 어디서든 좌우로 문지르기. 방향이 바뀔 때마다 한 번 쓸기, 손가락 위치대로 빗자루가 움직인다
+//   보조 끔: 왼쪽 절반 = 누른 자리에 생기는 조이스틱(월드 고정 목표점 이동), 오른쪽 절반 = 좌우로 문지르기
 // 투구(새총 당기기)는 손가락 하나 드래그라 MouseInput의 Pointer Events가 그대로 처리한다.
-import { SwipeStrokeDetector } from './swipe.js';
+import { SwipeStrokeDetector, HandTracker } from './swipe.js';
 
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
 const JOY_RADIUS = 56; // CSS px
 const EDGE_GUARD = 24; // iOS 왼쪽 가장자리 '뒤로 가기' 스와이프와 겹치지 않게
 const SWIPE_THRESHOLD = 14;
+const HAND_RANGE = 50;
 
 export class TouchInput {
   constructor(canvas, game, ui) {
@@ -17,6 +18,7 @@ export class TouchInput {
     this.joy = null;
     this.swipe = null;
     this.detector = new SwipeStrokeDetector(SWIPE_THRESHOLD);
+    this.hand = new HandTracker(HAND_RANGE);
     this.suspended = false; // 홈·일시정지 중
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
@@ -42,7 +44,8 @@ export class TouchInput {
     } else if (!left && !this.swipe) {
       this.swipe = { id: e.pointerId };
       this.canvas.setPointerCapture(e.pointerId);
-      this.detector.start(e.clientY);
+      this.detector.start(e.clientX);
+      this.hand.start(e.clientX);
     }
   }
 
@@ -58,7 +61,8 @@ export class TouchInput {
       this.game.enqueue({ type: 'joy', x: dx / JOY_RADIUS, y: -dy / JOY_RADIUS });
       this.showJoy(this.joy.ox, this.joy.oy, dx, dy);
     } else if (this.swipe && e.pointerId === this.swipe.id) {
-      const stroke = this.detector.move(e.clientY);
+      this.game.enqueue({ type: 'hand', x: this.hand.move(e.clientX) });
+      const stroke = this.detector.move(e.clientX);
       if (stroke) {
         this.game.enqueue({ type: 'press', button: stroke === 'push' ? 0 : 2 });
         this.ui.swipeZone.dataset.flash = stroke;
@@ -75,6 +79,7 @@ export class TouchInput {
       this.ui.joyBase.hidden = true;
     } else if (this.swipe && e.pointerId === this.swipe.id) {
       this.swipe = null;
+      this.game.enqueue({ type: 'hand', x: 0 });
     }
   }
 
