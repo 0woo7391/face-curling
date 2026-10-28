@@ -1,0 +1,48 @@
+import { describe, it, expect } from 'vitest';
+import { createConfig } from '../src/config.js';
+import { stepStoneVelocity, predictPath, launchVelocity } from '../src/core/curling.js';
+
+const cfg = createConfig();
+const dt = 1 / cfg.tickRate;
+
+describe('stepStoneVelocity', () => {
+  it('감속량이 속도보다 크면 0이 되고 방향이 뒤집히지 않는다', () => {
+    const v = stepStoneVelocity(0, cfg.stopSpeed + 0.001, 0, 0, cfg, dt);
+    expect(v).toEqual({ x: 0, y: 0 });
+  });
+
+  it('곡률은 속력을 바꾸지 않는다', () => {
+    const v = stepStoneVelocity(0, 3, 1, 0, cfg, dt);
+    expect(Math.hypot(v.x, v.y)).toBeCloseTo(3 - cfg.friction * dt, 10);
+  });
+
+  it('시계 방향(+) 회전은 오른쪽(+x), 반시계는 왼쪽으로 휜다', () => {
+    const v = launchVelocity(0, 0.8, cfg);
+    const cw = predictPath(0, 0, v.x, v.y, 1, cfg).end;
+    const ccw = predictPath(0, 0, v.x, v.y, -1, cfg).end;
+    const none = predictPath(0, 0, v.x, v.y, 0, cfg).end;
+    expect(cw.x).toBeGreaterThan(0.2);
+    expect(ccw.x).toBeCloseTo(-cw.x, 6);
+    expect(none.x).toBeCloseTo(0, 9);
+  });
+
+  it('스위핑하면 더 멀리 가고 덜 휜다', () => {
+    let a = { x: 0, y: 3 }, b = { x: 0, y: 3 };
+    const pa = { x: 0, y: 0 }, pb = { x: 0, y: 0 };
+    for (let i = 0; i < 60 * 30; i++) {
+      a = stepStoneVelocity(a.x, a.y, 1, 0, cfg, dt);
+      b = stepStoneVelocity(b.x, b.y, 1, 1, cfg, dt);
+      pa.x += a.x * dt; pa.y += a.y * dt;
+      pb.x += b.x * dt; pb.y += b.y * dt;
+    }
+    expect(pb.y).toBeGreaterThan(pa.y * 1.15);
+    expect(Math.abs(pb.x) / pb.y).toBeLessThan(Math.abs(pa.x) / pa.y);
+  });
+
+  it('최대 파워는 보드를 넘고 최소 파워는 보드에 못 미친다', () => {
+    const far = predictPath(0, 0, 0, cfg.maxLaunchSpeed, 0, cfg).end.y;
+    const near = predictPath(0, 0, 0, cfg.minLaunchSpeed, 0, cfg).end.y;
+    expect(far).toBeGreaterThan(cfg.boardCenterY + cfg.boardSize / 2);
+    expect(near).toBeLessThan(cfg.boardCenterY - cfg.boardSize / 2);
+  });
+});

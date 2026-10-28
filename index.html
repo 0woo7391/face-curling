@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Face Curling POC A</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="loading">물리 엔진 불러오는 중…</div>
+    <div id="hud">
+      <header id="topbar">
+        <strong>FACE CURLING · POC A</strong>
+        <span id="status"></span>
+        <span class="spacer"></span>
+        <label>모드
+          <select id="mode">
+            <option value="record">기록</option>
+            <option value="practice">연습</option>
+          </select>
+        </label>
+        <button id="restart">재시작</button>
+        <button id="help-btn">조작법</button>
+      </header>
+
+      <aside id="parts"></aside>
+
+      <footer id="bottom">
+        <div id="instruction"></div>
+        <div id="controls">
+          <button id="back" hidden>◀ 뒤로</button>
+          <button id="next" hidden>다음 ▶</button>
+          <button id="undo" hidden>직전 투구 되돌리기</button>
+        </div>
+      </footer>
+
+      <section id="sweep-panel" hidden>
+        <div class="meter"><span>스위핑 강도</span><div class="bar" id="bar-s"></div></div>
+        <div class="meter"><span>입력 효율</span><div class="bar" id="bar-input"></div></div>
+        <div class="meter"><span>위치 효율</span><div class="bar" id="bar-pos"></div></div>
+        <div id="rhythm"></div>
+        <div id="next-input"></div>
+        <div id="rate"></div>
+        <div id="stone-info"></div>
+        <div id="warn"></div>
+      </section>
+
+      <div id="minimap-frame" hidden><span>보드</span></div>
+      <div id="offscreen" hidden></div>
+      <div id="banner" hidden></div>
+      <div id="lock-overlay" hidden>
+        <div>클릭해서 스위핑 조작 시작·재개<small>마우스가 화면에 고정됩니다 · <kbd>Esc</kbd>로 해제 · 스톤은 계속 움직입니다</small></div>
+      </div>
+      <section id="result" hidden></section>
+      <div id="log"></div>
+
+      <section id="help">
+        <h2>조작법</h2>
+        <ol>
+          <li><b>부위 선택</b> — 오른쪽 목록 클릭</li>
+          <li><b>방향</b> — 레인을 클릭·드래그 → 다음</li>
+          <li><b>회전</b> — 스톤 주위를 원 그리며 드래그 (시계 = 오른쪽으로 휨) → 다음</li>
+          <li><b>파워</b> — 누른 채 아래로 당기고 놓으면 발사</li>
+          <li><b>스위핑</b> — 마우스 이동으로 캐릭터 목표점 이동(월드 고정, 마우스 잠금), <b>좌클릭 밀기 → 우클릭 당기기</b> 교대. 초록 영역(스톤 앞)에서만 효과</li>
+          <li>빗자루가 <span class="y">노란 원</span> 안 = 쿠션(경고만), <span class="r">빨간 원</span>에 <i>graceTicks</i> 이상 겹침 = BURNED. 몸이 닿으면 즉시 BURNED</li>
+          <li><kbd>T</kbd> 레인 탑다운 전환 · 오른쪽 위 <b>디버그 · 튜닝</b> 패널에서 수치 조정</li>
+        </ol>
+        <p>클릭하면 닫힙니다.</p>
+      </section>
+    </div>
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>
