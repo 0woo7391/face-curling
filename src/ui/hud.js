@@ -18,6 +18,7 @@ export class Hud {
     $('mode').addEventListener('change', (e) => actions.setMode(e.target.value));
     $('restart').addEventListener('click', () => actions.restart());
     $('mute').addEventListener('click', () => actions.toggleMute());
+    $('face-btn').addEventListener('click', () => actions.openMaker());
     $('tune').addEventListener('click', () => actions.toggleTuning());
     $('back').addEventListener('click', () => game.back());
     $('next').addEventListener('click', () => game.next());
@@ -85,7 +86,7 @@ export class Hud {
     for (const p of g.parts) {
       const b = this.partButtons.get(p.id);
       const s = g.sim.stones.get(p.id);
-      const score = s && p.status !== 'pending' ? partScore(partError(s, p.q, g.board), g.cfg.allowedError) : null;
+      const score = s && p.status !== 'pending' ? partScore(partError(s, p.q, g.board, g.faceDiagonal), g.cfg.allowedError) : null;
       const sc = p.status === 'burned' || p.status === 'out' ? '0' : score == null ? '' : score.toFixed(0);
       this.set(`pc-${p.id}`, b.querySelector('.sc'), sc);
       this.set(`pd-${p.id}`, b, !(st === 'PART_SELECT' && p.status === 'pending'), 'disabled');
@@ -150,7 +151,7 @@ export class Hud {
   hint(touch) {
     switch (this.game.state) {
       case 'PART_SELECT':
-        return '던질 부위를 고르세요';
+        return this.game.face ? '던질 부위를 고르세요' : '던질 부위를 고르세요 · 📷 내 사진으로 얼굴 만들기';
       case 'AIM':
         return touch ? '레인을 끌어서 방향' : '레인을 드래그해서 방향';
       case 'SPIN':

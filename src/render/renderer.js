@@ -8,7 +8,7 @@ import * as THREE from 'three';
 import { FACE_BOX } from '../core/board.js';
 import { LAUNCH } from '../core/game.js';
 import { broomJudgeRadius } from '../core/sweep.js';
-import { faceBoardTexture, puckTexture, labelTexture } from './textures.js';
+import { faceBoardTexture, puckTexture, labelTexture, stickerPuckTexture, canvasTexture } from './textures.js';
 import { Fx } from './fx.js';
 
 const V = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
@@ -161,7 +161,9 @@ export class Renderer {
     scene.add(this.ghosts);
 
     this.stoneMeshes = new Map();
-    this.puckTextures = new Map(game.parts.map((p) => [p.id, puckTexture(p)]));
+    const fp = game.face?.parts ?? {};
+    this.puckTextures = new Map(game.parts.map((p) => [p.id, fp[p.id] ? stickerPuckTexture(p, fp[p.id].canvas) : puckTexture(p)]));
+    this.buildResultStickers(game);
     this.buildThrowFeedback(game);
     this.buildCharacter();
     this.buildSweepFeedback(game);
@@ -195,7 +197,8 @@ export class Renderer {
     stripe(0, '#d32f2f');
     stripe(cfg.laneLength, '#1565c0');
     const B = cfg.boardSize;
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(B, B), new THREE.MeshStandardMaterial({ map: faceBoardTexture(FACE_BOX), roughness: 0.6 }));
+    const boardMap = game.face ? canvasTexture(game.face.empty) : faceBoardTexture(FACE_BOX);
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(B, B), new THREE.MeshStandardMaterial({ map: boardMap, roughness: 0.6 }));
     board.rotation.x = -Math.PI / 2;
     board.position.copy(V(0, cfg.boardCenterY, 0.004));
     scene.add(board);
@@ -278,6 +281,30 @@ export class Renderer {
     this.dbgZone.add(zone);
     this.sensors.add(this.dbgBody, this.dbgBroom, this.dbgContact, this.dbgZone);
     this.scene.add(this.sensors);
+  }
+
+  /**
+   * 결과 화면: 퍽을 감추고 실제 크기 부위 스티커를 최종 위치에 붙인다 (명세 3.10).
+   * 스티커 중심과 채점 기준점(마스크 무게중심)의 차이 = visualOffset (명세 6.2)
+   */
+  buildResultStickers(game) {
+    this.resultStickers = new Map();
+    if (!game.face) return;
+    const B = game.cfg.boardSize;
+    for (const [id, p] of Object.entries(game.face.parts)) {
+      const geo = new THREE.PlaneGeometry(1, 1);
+      geo.rotateX(-Math.PI / 2);
+      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: canvasTexture(p.canvas), transparent: true, depthWrite: false, toneMapped: false }));
+      m.visible = false;
+      m.userData = {
+        w: p.rect.w * B,
+        h: p.rect.h * B,
+        dx: (p.rect.x + p.rect.w / 2 - p.anchor.x) * B,
+        dy: -(p.rect.y + p.rect.h / 2 - p.anchor.y) * B,
+      };
+      this.scene.add(m);
+      this.resultStickers.set(id, m);
+    }
   }
 
   makeStone(part) {
@@ -408,7 +435,24 @@ export class Renderer {
       }
       m.position.copy(V(lerp(s.prevX, s.x, alpha), lerp(s.prevY, s.y, alpha)));
       m.userData.handle.rotation.y = -s.angle; // 위에서 볼 때 시계 방향 = +spin
+      // 결과: 퍽 대신 스티커가 차례로 '착' 붙는다
+      const sticker = this.resultStickers.get(s.id);
+      const showSticker = !!sticker && game.state === 'RESULT';
+      m.visible = !showSticker;
+      if (sticker) {
+        sticker.visible = showSticker;
+        if (showSticker) {
+          const order = game.parts.findIndex((p) => p.id === s.id);
+          const t = Math.min(1, Math.max(0, (this.time - (this.resultAt ?? 0) - order * 0.15) / 0.25));
+          const pop = t < 1 ? 1.25 - 0.25 * t : 1;
+          const u = sticker.userData;
+          sticker.position.copy(V(s.x + u.dx, s.y + u.dy, 0.02 + order * 0.002));
+          sticker.scale.set(u.w * pop * t, 1, u.h * pop * t);
+        }
+      }
     }
+    if (game.state === 'RESULT' && this.lastState !== 'RESULT') this.resultAt = this.time;
+    this.lastState = game.state;
     for (const [id, m] of this.stoneMeshes) {
       if (!seen.has(id)) {
         this.scene.remove(m);

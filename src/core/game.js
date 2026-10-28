@@ -6,29 +6,42 @@
 // 입력 이벤트는 enqueue()로 쌓이고, 다음 고정 틱 시작 시 그 틱 번호에 귀속된다 (명세 5.2 틱 양자화).
 // 게임은 발사·스트로크·충돌·번드 등을 타입 있는 이벤트로 내보내고(drainEvents), 이펙트·소리는 그것만 구독한다.
 // 이벤트는 표현 전용이며 게임 로직은 이벤트를 읽지 않는다.
-import { FACE_PARTS, makeBoard } from './board.js';
+import { FACE_PARTS, FACE_DIAGONAL, makeBoard } from './board.js';
 import { launchVelocity, predictPath } from './curling.js';
 import { Simulation } from './simulation.js';
 import { SweepController, sweepPositionEfficiency } from './sweep.js';
 import { BurnMonitor, updateAssist } from './burn.js';
 import { Character } from './character.js';
-import { partError, partScore, checkLayout } from './scoring.js';
+import { partError, partScore, checkLayout, fitStoneRadius } from './scoring.js';
 
 export const LAUNCH = Object.freeze({ x: 0, y: 0 });
 
 export class Game {
   constructor(R, cfg, mode = 'record') {
     this.R = R;
-    this.cfg = cfg;
+    this.baseCfg = cfg; // 튜닝 패널이 바꾸는 설정. this.cfg는 이 얼굴에 맞춘 값만 덮어쓴 파생 설정
     this.mode = mode;
+    this.restart();
+  }
+
+  /** 사진으로 만든 얼굴 적용 (null = 기본 가상 얼굴). 정답 위치·채점 기준이 바뀐다 */
+  setFace(face) {
+    this.face = face;
     this.restart();
   }
 
   restart() {
     this.sim?.free();
-    this.sim = new Simulation(this.R, this.cfg);
+    // 얼굴마다 정답 간격이 달라 퍽 반지름만 맞춰 덮어쓴다. 나머지 값은 원래 설정을 그대로 따라간다 (프로토타입 상속)
+    this.cfg = Object.create(this.baseCfg);
     this.board = makeBoard(this.cfg);
-    this.parts = FACE_PARTS.map((p) => ({ ...p, status: 'pending', burnCause: null }));
+    const fp = this.face?.parts ?? {};
+    this.parts = FACE_PARTS.map((p) => ({ ...p, q: fp[p.id]?.anchor ?? p.q, status: 'pending', burnCause: null }));
+    const r = fitStoneRadius(this.parts, this.board, this.baseCfg);
+    if (r < this.baseCfg.stoneRadius) this.cfg.stoneRadius = r;
+    this.sim = new Simulation(this.R, this.cfg);
+    const fb = this.face?.faceBox;
+    this.faceDiagonal = fb ? Math.hypot(fb.x1 - fb.x0, fb.y1 - fb.y0) : FACE_DIAGONAL;
     this.state = 'PART_SELECT';
     this.tickCount = 0;
     this.currentPartId = null;
@@ -354,7 +367,7 @@ export class Game {
     const rows = this.parts.map((p) => {
       const s = this.sim.stones.get(p.id);
       const placed = s && (p.status === 'stopped' || p.status === 'moving');
-      const err = placed ? partError(s, p.q, this.board) : null;
+      const err = placed ? partError(s, p.q, this.board, this.faceDiagonal) : null;
       return { id: p.id, label: p.label, status: p.status, burnCause: p.burnCause, err, score: placed ? partScore(err, this.cfg.allowedError) : 0 };
     });
     const total = rows.reduce((a, r) => a + r.score, 0);

@@ -165,3 +165,23 @@ describe('이벤트 스트림', () => {
     expect(await play(true)).toEqual(await play(false));
   });
 });
+
+describe('사진 얼굴', () => {
+  it('정답이 가까우면 퍽 반지름을 줄여 동시 배치를 가능하게 하고, 기본 설정은 그대로 둔다', async () => {
+    const g = await newGame();
+    const base = g.cfg.stoneRadius;
+    expect(g.cfg.stoneRadius).toBe(g.baseCfg.stoneRadius);
+    const anchor = (x, y) => ({ anchor: { x, y } });
+    g.setFace({
+      faceBox: { x0: 0.25, y0: 0.15, x1: 0.75, y1: 0.85 },
+      parts: { left_brow: anchor(0.4, 0.37), right_brow: anchor(0.6, 0.37), left_eye: anchor(0.41, 0.415), right_eye: anchor(0.6, 0.415), nose: anchor(0.5, 0.52), mouth: anchor(0.5, 0.64) },
+    });
+    expect(g.cfg.stoneRadius).toBeLessThan(base);
+    expect(g.baseCfg.stoneRadius).toBe(base);
+    expect(g.layoutReport().conflicts).toEqual([]);
+    expect(g.parts.find((p) => p.id === 'left_eye').q).toEqual({ x: 0.41, y: 0.415 });
+    expect(g.faceDiagonal).toBeCloseTo(Math.hypot(0.5, 0.7));
+    g.setFace(null);
+    expect(g.cfg.stoneRadius).toBe(base);
+  });
+});

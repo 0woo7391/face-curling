@@ -84,3 +84,32 @@ export function labelTexture(text, color = '#ffffff') {
   g.fillText(text, 128, 37);
   return finish(c);
 }
+
+/** 사진 부위 스티커를 얹은 퍽 윗면: 부위 색 테두리 + 흰 바탕 + 스티커(원 안에 맞춤) */
+export function stickerPuckTexture(part, sticker) {
+  const S = 256;
+  const c = document.createElement('canvas');
+  c.width = c.height = S;
+  const g = c.getContext('2d');
+  g.fillStyle = part.color;
+  g.beginPath();
+  g.arc(S / 2, S / 2, S / 2 - 2, 0, Math.PI * 2);
+  g.fill();
+  g.fillStyle = '#fff';
+  g.beginPath();
+  g.arc(S / 2, S / 2, S / 2 - 18, 0, Math.PI * 2);
+  g.fill();
+  g.save();
+  g.clip();
+  const inner = (S - 44) * 0.92;
+  const k = inner / Math.max(sticker.width, sticker.height);
+  const w = sticker.width * k;
+  const h = sticker.height * k;
+  g.drawImage(sticker, (S - w) / 2, (S - h) / 2, w, h);
+  g.restore();
+  return finish(c);
+}
+
+export function canvasTexture(source) {
+  return finish(source);
+}

@@ -7,10 +7,12 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "test": "vitest run"
+    "test": "vitest run",
+    "postinstall": "node tools/vendor-mediapipe.mjs"
   },
   "dependencies": {
     "@dimforge/rapier2d-compat": "^0.21.0",
+    "@mediapipe/tasks-vision": "^0.10.21",
     "lil-gui": "^0.21.0",
     "three": "^0.186.1"
   },

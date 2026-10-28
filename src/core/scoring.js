@@ -2,9 +2,10 @@
 // 보드가 1:1이므로 q 공간 = (u,v). 거리는 q 공간에서 계산한다.
 import { FACE_DIAGONAL } from './board.js';
 
-export function partError(worldPos, anchorQ, board) {
+/** @param diagonal 얼굴 기준 박스 대각선 (q). 사진 얼굴은 얼굴 윤곽에서, 기본 얼굴은 FACE_DIAGONAL */
+export function partError(worldPos, anchorQ, board, diagonal = FACE_DIAGONAL) {
   const q = board.worldToQ(worldPos);
-  return Math.hypot(q.x - anchorQ.x, q.y - anchorQ.y) / FACE_DIAGONAL;
+  return Math.hypot(q.x - anchorQ.x, q.y - anchorQ.y) / diagonal;
 }
 
 export function partScore(err, allowedError) {
@@ -39,4 +40,15 @@ export function checkLayout(parts, board, cfg, launch = { x: 0, y: 0 }) {
     if (by.length) blocked.push({ target: t.id, by });
   }
   return { conflicts, blocked };
+}
+
+/**
+ * 정답 위치끼리 퍽이 겹치지 않는 최대 반지름 (명세 5.3-3: 겹치면 전체 퍽 반지름을 줄인다).
+ * cfg.stoneRadius보다 커지지 않고 minRadius보다 작아지지 않는다 (그래도 겹치면 checkLayout이 알려 줌).
+ */
+export function fitStoneRadius(parts, board, cfg, minRadius = 0.07) {
+  const pts = parts.map((p) => board.qToWorld(p.q));
+  let d = Infinity;
+  for (let i = 0; i < pts.length; i++) for (let j = i + 1; j < pts.length; j++) d = Math.min(d, Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y));
+  return Math.max(minRadius, Math.min(cfg.stoneRadius, (d - cfg.layoutMargin) / 2));
 }
