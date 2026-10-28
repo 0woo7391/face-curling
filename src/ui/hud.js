@@ -6,7 +6,7 @@
 import { partError, partScore } from '../core/scoring.js';
 
 const $ = (id) => document.getElementById(id);
-const STEPS = ['AIM', 'SPIN', 'POWER'];
+const SPIN_LEVELS = [0.5, 1]; // 칩을 누를 때마다 0.5 → 1 → 끔
 const LEARN_STROKES = 3; // 유효 스트로크를 이만큼 하면 스위핑 힌트를 숨긴다
 const CONFIRM_MS = 2500;
 
@@ -24,7 +24,14 @@ export class Hud {
     // 게임
     on('pause-btn', () => actions.pause());
     on('back', () => game.back());
-    on('next', () => game.next());
+    // 회전 칩: 같은 쪽을 누를 때마다 세기 0.5 → 1 → 끔, 반대쪽을 누르면 그쪽 0.5부터
+    const cycleSpin = (sign) => {
+      const cur = game.spin * sign;
+      const i = SPIN_LEVELS.findIndex((v) => Math.abs(v - cur) < 1e-6);
+      game.setSpin(cur <= 0 ? sign * SPIN_LEVELS[0] : i >= 0 && i < SPIN_LEVELS.length - 1 ? sign * SPIN_LEVELS[i + 1] : 0);
+    };
+    on('spin-l', () => cycleSpin(-1));
+    on('spin-r', () => cycleSpin(1));
     on('undo', () => game.undoLastThrow());
     // 홈
     on('home-start', () => actions.start('record'));
@@ -38,6 +45,7 @@ export class Hud {
     on('p-restart', () => this.confirm('p-restart', '정말 처음부터? 한 번 더', () => actions.restartGame()));
     on('p-home', () => this.confirm('p-home', '진행 중인 게임을 그만둘까요? 한 번 더', () => actions.goHome()));
     on('p-sound', () => actions.toggleMute());
+    on('p-assist', () => actions.toggleAssist());
     on('p-help', () => this.toggleHelp());
     on('p-tune', () => actions.toggleTuning());
     $('help').addEventListener('click', () => $('help').classList.remove('open'));
@@ -146,13 +154,14 @@ export class Hud {
     const sound = app.muted ? '🔇' : '🔊';
     this.set('hs', $('home-sound'), sound);
     this.set('ps', $('p-sound'), `${sound} 소리`);
+    this.set('pa', $('p-assist'), g.cfg.sweepAssist ? '🧹 스위핑: 자동 따라가기 (쉬움)' : '🧹 스위핑: 직접 이동 (어려움)');
     if (app.screen === 'home') this.updateHome();
     $('mode-badge').hidden = g.mode !== 'practice';
 
     // 부위 버튼 + 진행 칸: 던진 부위는 점수, 번드·이탈은 빨간 ✕
     for (const p of g.parts) {
       const s = g.sim.stones.get(p.id);
-      const score = s && p.status !== 'pending' ? partScore(partError(s, p.q, g.board, g.faceDiagonal), g.cfg.allowedError) : null;
+      const score = s && p.status === 'stopped' ? partScore(partError(s, p.q, g.board, g.faceDiagonal), g.cfg.allowedError) : null;
       const lost = p.status === 'burned' || p.status === 'out';
       const sc = lost ? '0' : score == null ? '' : score.toFixed(0);
       const b = this.partButtons.get(p.id);
@@ -166,18 +175,22 @@ export class Hud {
       if (score != null && !lost) slot.style.setProperty('--score', `hsl(${Math.round((score / 100) * 120)} 75% 45%)`);
     }
 
-    // 투구 단계 칩
-    const stepIdx = STEPS.indexOf(st);
-    $('steps').hidden = stepIdx < 0;
-    [...$('steps').children].forEach((c, i) => {
-      c.classList.toggle('on', i === stepIdx);
-      c.classList.toggle('done', i < stepIdx);
-    });
+    // 투구: ◀(부위 다시) + 회전 칩. 당기는 중에는 숨겨 화면을 비운다
+    const throwing = st === 'THROW';
+    const pulling = throwing && g.power > 0;
+    $('back').hidden = !throwing || pulling;
+    $('spin').hidden = !throwing || pulling;
+    const lvl = (sign) => (g.spin * sign > 0 ? (Math.abs(g.spin) > 0.75 ? '●●' : '●') : '');
+    this.set('spinL', $('spin-l').querySelector('i'), lvl(-1));
+    this.set('spinR', $('spin-r').querySelector('i'), lvl(1));
+    $('spin-l').classList.toggle('on', g.spin < 0);
+    $('spin-r').classList.toggle('on', g.spin > 0);
 
     this.set('hint', $('hint'), this.hint(touch));
-    $('back').hidden = stepIdx < 0;
-    $('next').hidden = !(st === 'AIM' || st === 'SPIN');
-    this.set('backLabel', $('back'), st === 'POWER' ? '✕' : '◀');
+    const assist = !!g.cfg.sweepAssist;
+    hud.dataset.assist = assist ? '1' : '';
+    this.set('nkL', $('next-key').querySelector('.l'), assist ? '▲ 밀기' : '좌클릭 밀기');
+    this.set('nkR', $('next-key').querySelector('.r'), assist ? '▼ 당기기' : '우클릭 당기기');
     $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && st === 'PART_SELECT');
 
     // 다음 입력: 마우스는 버튼 그림, 터치는 스와이프 판의 화살표가 밝아진다
@@ -239,7 +252,7 @@ export class Hud {
     let bottomEdge = H;
     let left = 0;
     let right = 0;
-    for (const id of ['steps', 'hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result', 'pause']) {
+    for (const id of ['hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result', 'pause']) {
       const el = $(id);
       const b = el.getBoundingClientRect();
       if (b.height === 0 || (id === 'hint' && !el.textContent)) continue;
@@ -257,17 +270,15 @@ export class Hud {
   }
 
   hint(touch) {
-    switch (this.game.state) {
+    const g = this.game;
+    switch (g.state) {
       case 'PART_SELECT':
         return '던질 부위를 고르세요';
-      case 'AIM':
-        return touch ? '레인을 끌어서 방향' : '레인을 드래그해서 방향';
-      case 'SPIN':
-        return '스톤 주위를 빙글 돌려 회전';
-      case 'POWER':
-        return '아래로 당겼다 놓기';
+      case 'THROW':
+        return g.power > 0 ? '놓으면 발사 · 위로 올리면 취소' : '아무 데나 누른 채 아래로 당겼다 놓기';
       case 'SWEEP':
         if (this.learned >= LEARN_STROKES) return '';
+        if (g.cfg.sweepAssist) return touch ? '화면을 위아래로 문질러 쓸기' : '버튼 누른 채 위아래로 문질러 쓸기';
         return touch ? '왼쪽 = 이동 · 오른쪽 = 위아래로 문지르기' : '빗자루를 스톤 앞에 대고 좌·우 번갈아 클릭';
       default:
         return '';

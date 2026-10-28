@@ -1,7 +1,11 @@
 // 게임 상태 기계 (명세 8장). 렌더링·DOM과 무관하므로 Node에서 헤드리스로 돌릴 수 있다.
 //
-// PART_SELECT → AIM → SPIN → POWER → SWEEP → SETTLING → PART_SELECT … → RESULT
-//                                       └──────┴→ BURN_RESOLVE → (기록) PART_SELECT/RESULT, (연습) AIM
+// PART_SELECT → THROW → SWEEP → SETTLING → PART_SELECT … → RESULT
+//                        └──────┴→ BURN_RESOLVE → (기록) PART_SELECT/RESULT, (연습) THROW
+//
+// THROW: 새총처럼 한 번 당겼다 놓으면 방향·파워가 함께 정해진다. 회전은 그 전에 칩으로 고른다.
+// 스위핑 보조(cfg.sweepAssist, 기본 켬): 캐릭터가 스톤 앞에 알아서 붙고, 플레이어는 문지르기만 한다.
+//   이때는 위치를 플레이어가 잡지 않으므로 번드 판정을 하지 않는다. 끄면 v1.2 규칙(직접 이동 + 번드) 그대로.
 //
 // 입력 이벤트는 enqueue()로 쌓이고, 다음 고정 틱 시작 시 그 틱 번호에 귀속된다 (명세 5.2 틱 양자화).
 // 게임은 발사·스트로크·충돌·번드 등을 타입 있는 이벤트로 내보내고(drainEvents), 이펙트·소리는 그것만 구독한다.
@@ -9,9 +13,9 @@
 import { FACE_PARTS, FACE_DIAGONAL, makeBoard } from './board.js';
 import { launchVelocity, predictPath } from './curling.js';
 import { Simulation } from './simulation.js';
-import { SweepController, sweepPositionEfficiency } from './sweep.js';
+import { SweepController, sweepPositionEfficiency, broomJudgeRadius } from './sweep.js';
 import { BurnMonitor, updateAssist } from './burn.js';
-import { Character } from './character.js';
+import { Character, ARRIVE_GAIN } from './character.js';
 import { partError, partScore, checkLayout, fitStoneRadius } from './scoring.js';
 
 export const LAUNCH = Object.freeze({ x: 0, y: 0 });
@@ -115,47 +119,35 @@ export class Game {
     if (this.state !== 'PART_SELECT' || !part || part.status !== 'pending') return false;
     this.currentPartId = id;
     this.aimAngle = 0;
-    this.spin = 0;
     this.power = 0;
-    this.state = 'AIM';
+    this.state = 'THROW';
     this.push({ type: 'select', partId: id });
     return true;
   }
 
-  setAimFromPoint(p) {
-    if (this.state !== 'AIM') return;
+  /** 새총 당기기: 방향(라디안, ±maxAimDeg로 제한)과 파워(0..1)를 함께 */
+  setThrow(aimAngle, power) {
+    if (this.state !== 'THROW') return;
     const max = (this.cfg.maxAimDeg * Math.PI) / 180;
-    const a = Math.atan2(p.x - LAUNCH.x, Math.max(0.5, p.y - LAUNCH.y));
-    this.aimAngle = Math.max(-max, Math.min(max, a));
+    this.aimAngle = Math.max(-max, Math.min(max, aimAngle));
+    this.power = Math.max(0, Math.min(1, power));
   }
 
+  /** 회전 (-1..1, + = 시계 = 오른쪽으로 휨) */
   setSpin(v) {
-    if (this.state === 'SPIN') this.spin = Math.max(-1, Math.min(1, v));
-  }
-
-  setPower(v) {
-    if (this.state === 'POWER') this.power = Math.max(0, Math.min(1, v));
-  }
-
-  next() {
-    if (this.state === 'AIM') this.state = 'SPIN';
-    else if (this.state === 'SPIN') this.state = 'POWER';
+    if (this.state === 'THROW') this.spin = Math.max(-1, Math.min(1, v));
   }
 
   back() {
-    if (this.state === 'POWER') {
-      this.power = 0;
-      this.state = 'SPIN';
-    } else if (this.state === 'SPIN') this.state = 'AIM';
-    else if (this.state === 'AIM') {
-      this.currentPartId = null;
-      this.state = 'PART_SELECT';
-    }
+    if (this.state !== 'THROW') return;
+    this.power = 0;
+    this.currentPartId = null;
+    this.state = 'PART_SELECT';
   }
 
-  /** 파워 드래그를 놓음. 발사하면 true (명세 8장: 발사 입력은 한 번만) */
+  /** 당긴 것을 놓음. 충분히 당겼으면 발사하고 true (명세 8장: 발사 입력은 한 번만) */
   release() {
-    if (this.state !== 'POWER') return false;
+    if (this.state !== 'THROW') return false;
     if (this.power < this.cfg.minPower) {
       this.power = 0;
       return false;
@@ -165,7 +157,7 @@ export class Game {
   }
 
   predictedPath() {
-    const power = this.state === 'POWER' && this.power > 0 ? this.power : this.cfg.defaultPreviewPower;
+    const power = this.power > 0 ? this.power : this.cfg.defaultPreviewPower;
     const v = launchVelocity(this.aimAngle, power, this.cfg);
     return predictPath(LAUNCH.x, LAUNCH.y, v.x, v.y, this.spin, this.cfg);
   }
@@ -228,6 +220,8 @@ export class Game {
 
     const moving = this.sim.movingStones();
     const cur = this.currentStone;
+    const assist = this.cfg.sweepAssist;
+    if (assist && cur && cur.status === 'moving') this.autoFollow(cur);
     const ref = cur && cur.status === 'moving' ? cur : nearest(moving, this.character.pos);
     this.character.update(dt, ref ? ref.x : null);
 
@@ -238,7 +232,7 @@ export class Game {
     this.broomPrev = this.broom;
     this.broom = { x: raw.x + this.character.assist.x, y: raw.y + this.character.assist.y };
 
-    const bm = this.burnMon.update(this.character.pos, this.broom, moving);
+    const bm = assist ? NO_BURN : this.burnMon.update(this.character.pos, this.broom, moving);
     if (bm.cushion && !this.frame.cushion) this.push({ type: 'cushion', x: this.broom.x, y: this.broom.y });
     this.frame.cushion = bm.cushion;
     this.frame.contactTicks = bm.contactTicks;
@@ -294,6 +288,27 @@ export class Game {
     if (this.state === 'SETTLING' && this.sim.isSettled()) this.finishTurn();
   }
 
+  /**
+   * 스위핑 보조: 빗자루가 스톤 바로 앞 효율 최고점에 오도록 캐릭터 목표를 매 틱 정한다 (결정론).
+   * 아직 스톤 앞에 있지 않으면 경로 옆으로 비켜서 먼저 앞지른 뒤 들어간다.
+   */
+  autoFollow(s) {
+    const { cfg } = this;
+    const sp = Math.hypot(s.vx, s.vy);
+    if (sp < 1e-3) return;
+    const dx = s.vx / sp;
+    const dy = s.vy / sp;
+    const best = cfg.stoneRadius + broomJudgeRadius(cfg) + cfg.cushionWidth + 0.12;
+    const b = this.broom;
+    const along = (b.x - s.x) * dx + (b.y - s.y) * dy;
+    // 캐릭터는 움직이는 목표를 v / ARRIVE_GAIN만큼 뒤따르므로 그만큼 앞을 겨냥한다
+    const bx = s.x + dx * best + s.vx / ARRIVE_GAIN;
+    const by = s.y + dy * best + s.vy / ARRIVE_GAIN;
+    const side = this.character.side; // 빗자루 = 몸 x - side × reach
+    if (along < best - 0.05) this.character.setTarget(bx + side * (cfg.broomReach + 0.5), by + 0.8, this.bounds);
+    else this.character.setTarget(bx + side * cfg.broomReach, by, this.bounds);
+  }
+
   finishTurn() {
     for (const p of this.parts) if (p.status === 'moving') p.status = this.sim.stones.has(p.id) ? 'stopped' : 'out';
     this.currentPartId = null;
@@ -340,11 +355,11 @@ export class Game {
       this.currentPartId = null;
       this.toNextTurn();
     } else {
-      // 연습: 복원 후 같은 부위 재투구 (조준·회전 값 유지)
+      // 연습: 복원 후 같은 부위 재투구 (회전 값 유지)
       part.status = 'pending';
       this.currentPartId = part.id;
       this.power = 0;
-      this.state = 'AIM';
+      this.state = 'THROW';
     }
     this.burn = null;
   }
@@ -391,5 +406,7 @@ function nearest(stones, p) {
   }
   return best;
 }
+
+const NO_BURN = Object.freeze({ burn: null, cushion: false, contactStarted: false, contactTicks: 0 });
 
 const labelOf = (id) => FACE_PARTS.find((p) => p.id === id)?.label ?? id;

@@ -105,12 +105,13 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
   position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 10px 10px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--panel));
 }
-#steps { display: flex; gap: 6px; }
-#steps[hidden] { display: none; }
-#steps span { padding: 4px 14px; border-radius: 999px; background: var(--chip); border: 2px solid var(--chip-line); color: var(--muted); font-weight: 700; font-size: 14px; }
-#steps span.on { background: var(--sticker); border-color: var(--sticker); color: var(--ink); transform: scale(1.08); }
-#steps span.done { color: var(--good); border-color: #3c6b2a; }
-#steps span.done::before { content: "✓ "; }
+/* 회전 칩: ⟲ ⟳, 누를 때마다 세기 ● → ●● → 끔 */
+#spin { display: flex; gap: 6px; }
+#spin[hidden] { display: none; }
+#spin button { min-width: 72px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 22px; }
+#spin button i { font-size: 10px; font-style: normal; letter-spacing: 1px; min-width: 14px; }
+#spin-l.on { background: #26c6da; border-color: #26c6da; color: var(--ink); }
+#spin-r.on { background: #ff7043; border-color: #ff7043; color: var(--ink); }
 #hint { min-height: 1.4em; font-size: 14px; font-weight: 600; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
 #controls { display: flex; gap: 10px; }
 #controls button { min-width: 56px; padding: 12px 22px; font-size: 18px; border-radius: 14px; }
@@ -185,6 +186,8 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #touch-swipe { display: none; }
 #hud[data-input="touch"][data-state="SWEEP"] #touch-swipe,
 #hud[data-input="touch"][data-state="SETTLING"] #touch-swipe { display: flex; }
+/* 보조 모드: 화면 어디서든 문지르므로 판을 가로 전체로 */
+#hud[data-assist="1"] #touch-swipe { left: 10px; width: auto; height: 26%; }
 #touch-swipe {
   position: absolute; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); width: calc(50% - 20px); height: 32%;
   flex-direction: column; justify-content: space-between; align-items: center; padding: 12px 0;

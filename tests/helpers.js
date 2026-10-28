@@ -10,18 +10,16 @@ export async function rapier() {
   return R;
 }
 
+/** 기존 테스트는 v1.2 규칙(직접 이동 + 번드)을 검증하므로 기본은 보조 끔 */
 export async function newGame(mode = 'record', overrides = {}) {
-  return new Game(await rapier(), createConfig(overrides), mode);
+  return new Game(await rapier(), createConfig({ sweepAssist: false, ...overrides }), mode);
 }
 
 /** 부위 선택 → 조준 → 회전 → 파워 → 발사 */
 export function throwPart(game, id, { aimX = 0, spin = 0, power = 0.8 } = {}) {
   if (!game.selectPart(id)) throw new Error(`select failed: ${id} in ${game.state}`);
-  game.setAimFromPoint({ x: aimX, y: 20 });
-  game.next();
   game.setSpin(spin);
-  game.next();
-  game.setPower(power);
+  game.setThrow(Math.atan2(aimX, 20), power);
   if (!game.release()) throw new Error('release failed');
 }
 

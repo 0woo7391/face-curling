@@ -366,7 +366,7 @@ export class Renderer {
     const { cfg } = game;
     const st = game.state;
     if (st === 'PART_SELECT' || st === 'RESULT') return this.overhead(0, cfg.boardCenterY, cfg.boardSize * 0.62, cfg.boardSize * 0.56);
-    if (st === 'AIM' || st === 'SPIN' || st === 'POWER') {
+    if (st === 'THROW') {
       return { pos: V(0, LAUNCH.y - 4.2, 3.4), look: V(0, LAUNCH.y + 4, 0), up: UP_Y, ortho: false, speed: 4 };
     }
     if (this.options.laneTop || this.fallback) {
@@ -419,7 +419,7 @@ export class Renderer {
     this.fx.update(dt, game);
 
     this.renderer.render(this.scene, this.active);
-    this.minimapVisible = this.options.showMinimap && ['AIM', 'SPIN', 'POWER', 'SWEEP', 'SETTLING', 'BURN_RESOLVE'].includes(game.state);
+    this.minimapVisible = this.options.showMinimap && ['THROW', 'SWEEP', 'SETTLING', 'BURN_RESOLVE'].includes(game.state);
     if (this.minimapVisible && this.minimapEl) this.renderMinimap(cfg, this.minimapEl.getBoundingClientRect());
   }
 
@@ -463,9 +463,10 @@ export class Renderer {
 
   renderThrowFeedback(game) {
     const st = game.state;
-    const aiming = st === 'AIM' || st === 'SPIN' || st === 'POWER';
+    const aiming = st === 'THROW';
+    const pulling = aiming && game.power > 0;
     this.previewStone.visible = this.aim.visible = aiming;
-    this.gauge.visible = st === 'POWER';
+    this.gauge.visible = pulling;
     if (!aiming) {
       this.updateSpinArc(0, false);
       return;
@@ -476,12 +477,12 @@ export class Renderer {
     const r = this.cfg.stoneRadius;
 
     // 파워: 스톤이 뒤로 당겨지고, 옆 막대가 차오르며 초록→노랑→빨강
-    const pw = st === 'POWER' ? game.power : 0;
+    const pw = pulling ? game.power : 0;
     const pull = pw * 0.6;
     const stone = { x: LAUNCH.x - dx * pull, y: LAUNCH.y - dy * pull };
     this.previewStone.position.copy(V(stone.x, stone.y));
     const powerColor = pw < 0.5 ? C.powerLo.clone().lerp(C.powerMid, pw * 2) : C.powerMid.clone().lerp(C.powerHi, (pw - 0.5) * 2);
-    if (st === 'POWER') {
+    if (pulling) {
       this.gauge.position.copy(V(LAUNCH.x + dy * 0.75, LAUNCH.y - dx * 0.75 - 0.2));
       this.gaugeFill.scale.y = Math.max(0.02, pw);
       this.gaugeFill.position.y = Math.max(0.02, pw) / 2;
@@ -494,19 +495,19 @@ export class Renderer {
 
     // 방향 화살표: 회전 고리 바깥에서 시작. 파워 단계에서는 세기만큼 길어지고 색이 바뀐다
     const start = { x: stone.x + dx * r * 3, y: stone.y + dy * r * 3 };
-    const len = st === 'POWER' ? 0.6 + 3 * pw : 1.5;
+    const len = pulling ? 0.6 + 3 * pw : 1.2;
     const tip = { x: start.x + dx * len, y: start.y + dy * len };
-    placeStrip(this.aimShaft, start, tip, st === 'AIM' ? 0.1 : 0.07, 0.015);
+    placeStrip(this.aimShaft, start, tip, pulling ? 0.09 : 0.06, 0.015);
     this.aimHead.position.copy(V(tip.x, tip.y, 0.016));
     this.aimHead.rotation.y = -game.aimAngle;
-    const aimColor = st === 'POWER' ? powerColor : new THREE.Color('#ffd54f');
-    const aimOpacity = st === 'SPIN' ? 0.35 : 1;
+    const aimColor = pulling ? powerColor : new THREE.Color('#ffd54f');
+    const aimOpacity = pulling ? 1 : 0.45; // 당기기 전에는 흐린 기본 방향
     for (const m of [this.aimShaft, this.aimHead]) {
       m.material.color.copy(aimColor);
       m.material.opacity = aimOpacity;
     }
 
-    this.updateSpinArc(game.spin, true, stone, st === 'SPIN' ? 0.95 : 0.4);
+    this.updateSpinArc(game.spin, true, stone, 0.95);
   }
 
   /** 회전 고리: 스톤에 딱 붙어서, 길이·두께 = 세기, 화살촉 = 방향, 색 = 시계(주황)/반시계(청록) */

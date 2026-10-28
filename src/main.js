@@ -9,7 +9,7 @@ import { Hud } from './ui/hud.js';
 import { Sound } from './audio/sound.js';
 import { loadFace, saveFace, clearFace } from './maker/store.js';
 import { checkLayout, fitStoneRadius } from './core/scoring.js';
-import { createDebugPanel, loadSavedConfig } from './ui/debug.js';
+import { createDebugPanel, loadSavedConfig, saveConfig } from './ui/debug.js';
 
 const debugHooks = { paused: false };
 
@@ -67,6 +67,11 @@ async function main() {
     },
     toggleTuning() {
       debug.toggle();
+    },
+    /** 스위핑 보조 켬/끔 — 다음 틱부터 적용, 이 브라우저에 저장 */
+    toggleAssist() {
+      cfg.sweepAssist = !cfg.sweepAssist;
+      saveConfig(cfg);
     },
     async openMaker() {
       // 얼굴 만들기(MediaPipe 포함)는 처음 열 때만 불러온다
@@ -131,7 +136,8 @@ async function main() {
     const ticks = stepper.advance(dt);
     const running = app.screen === 'game' && !app.paused && !debugHooks.paused;
     if (running) for (let i = 0; i < ticks; i++) game.tick();
-    input.suspended = touch.suspended = !running; // 일시정지·홈에서는 마우스 잠금 안내·스위핑 입력을 받지 않는다
+    // 일시정지·홈에서는 마우스 잠금 안내·스위핑 입력을 받지 않는다 (디버그 정지는 입력을 막지 않음 — 자동 테스트용)
+    input.suspended = touch.suspended = app.screen !== 'game' || app.paused;
     input.update();
     touch.update();
 

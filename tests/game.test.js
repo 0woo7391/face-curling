@@ -76,7 +76,7 @@ describe('Game 흐름', () => {
     const g = await newGame('practice');
     throwPart(g, 'mouth', { power: 0.8 });
     g.enqueue({ type: 'moveAbs', x: 0, y: 5 }); // 몸이 경로 위
-    runUntil(g, () => g.state === 'AIM');
+    runUntil(g, () => g.state === 'THROW');
     expect(g.stats.burnsBody).toBe(1);
     expect(g.currentPartId).toBe('mouth');
     expect(g.parts.find((p) => p.id === 'mouth').status).toBe('pending');
@@ -183,5 +183,63 @@ describe('사진 얼굴', () => {
     expect(g.faceDiagonal).toBeCloseTo(Math.hypot(0.5, 0.7));
     g.setFace(null);
     expect(g.cfg.stoneRadius).toBe(base);
+  });
+});
+
+describe('투구 단순화 (THROW)', () => {
+  it('한 번에 방향·파워, 방향은 ±maxAimDeg로 제한, 덜 당기면 발사 안 함', async () => {
+    const g = await newGame();
+    g.selectPart('nose');
+    expect(g.state).toBe('THROW');
+    g.setThrow(1, 2);
+    expect(g.aimAngle).toBeCloseTo((g.cfg.maxAimDeg * Math.PI) / 180);
+    expect(g.power).toBe(1);
+    g.setThrow(0, g.cfg.minPower / 2);
+    expect(g.release()).toBe(false);
+    expect(g.state).toBe('THROW');
+    g.setSpin(0.5);
+    g.setThrow(0.05, 0.7);
+    expect(g.release()).toBe(true);
+    expect(g.state).toBe('SWEEP');
+    expect(g.currentStone.spin).toBe(0.5);
+  });
+  it('back은 부위 선택으로', async () => {
+    const g = await newGame();
+    g.selectPart('nose');
+    g.back();
+    expect(g.state).toBe('PART_SELECT');
+    expect(g.selectPart('nose')).toBe(true);
+  });
+});
+
+describe('스위핑 보조 (sweepAssist)', () => {
+  const scrub = (g) => {
+    let n = 0;
+    return () => {
+      if (g.state === 'SWEEP' && ++n % 8 === 0) g.enqueue({ type: 'press', button: g.sweep.expect === 'push' ? 0 : 2 });
+    };
+  };
+  it('문지르기만 해도 효율 높은 스위핑이 되고 더 멀리 간다, 번드 없음', async () => {
+    const a = await newGame('record', { sweepAssist: true });
+    throwPart(a, 'nose', { power: 0.6 });
+    runUntil(a, settledOrDone(a));
+    const b = await newGame('record', { sweepAssist: true });
+    throwPart(b, 'nose', { power: 0.6 });
+    runUntil(b, settledOrDone(b), scrub(b));
+    expect(b.stats.lastThrow.avgSweep).toBeGreaterThan(0.5);
+    expect(b.sim.stones.get('nose').y).toBeGreaterThan(a.sim.stones.get('nose').y + 1);
+    expect(b.stats.burnsBody + b.stats.burnsBroom).toBe(0);
+  });
+  it('회전을 준 스톤도 따라간다', async () => {
+    const g = await newGame('record', { sweepAssist: true });
+    throwPart(g, 'left_eye', { power: 0.75, spin: -1, aimX: 2 });
+    runUntil(g, settledOrDone(g), scrub(g));
+    expect(g.stats.lastThrow.avgSweep).toBeGreaterThan(0.5);
+  });
+  it('보조 중에는 캐릭터가 경로에 서 있어도 번드가 없다', async () => {
+    const g = await newGame('record', { sweepAssist: true });
+    throwPart(g, 'mouth', { power: 0.8 });
+    runUntil(g, settledOrDone(g));
+    expect(g.stats.burnsBody + g.stats.burnsBroom).toBe(0);
   });
 });

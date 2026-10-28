@@ -1,7 +1,7 @@
 // 터치 조작 (세로 화면 기본). 스위핑 중에만 동작한다.
-//   왼쪽 절반: 누른 자리에 생기는 조이스틱 → 월드 고정 목표점 이동
-//   오른쪽 절반: 위아래로 문지르기 → 밀기/당기기
-// 투구 준비(방향·회전·파워)는 손가락 하나 드래그라 MouseInput의 Pointer Events가 그대로 처리한다.
+//   보조 켬(기본): 화면 어디서든 위아래로 문지르기 → 밀기/당기기
+//   보조 끔: 왼쪽 절반 = 누른 자리에 생기는 조이스틱(월드 고정 목표점 이동), 오른쪽 절반 = 문지르기
+// 투구(새총 당기기)는 손가락 하나 드래그라 MouseInput의 Pointer Events가 그대로 처리한다.
 import { SwipeStrokeDetector } from './swipe.js';
 
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
@@ -33,7 +33,8 @@ export class TouchInput {
     if (e.pointerType !== 'touch' || !this.sweeping) return;
     e.preventDefault();
     const rect = this.canvas.getBoundingClientRect();
-    const left = e.clientX < rect.left + rect.width / 2;
+    // 보조 모드는 이동이 필요 없으므로 화면 어디서든 문지르기
+    const left = !this.game.cfg.sweepAssist && e.clientX < rect.left + rect.width / 2;
     if (left && !this.joy && e.clientX > rect.left + EDGE_GUARD) {
       this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
       this.canvas.setPointerCapture(e.pointerId);

@@ -20,6 +20,7 @@ export const DEFAULTS = Object.freeze({
   minPower: 0.05, // 이보다 약하면 발사하지 않음
   maxAimDeg: 12,
   defaultPreviewPower: 0.75,
+  maxPullFraction: 0.32, // 화면 높이의 이 비율만큼 당기면 파워 100%
 
   // ── 레인·보드 (5.4) — 바꾸면 재시작 ──
   laneWidth: 5.0,
@@ -30,6 +31,7 @@ export const DEFAULTS = Object.freeze({
   layoutMargin: 0.04, // 정답 간섭 검사 여유값
 
   // ── 캐릭터·스위핑 (3.8) ──
+  sweepAssist: true, // 캐릭터가 스톤 앞에 자동으로 붙음 (플레이어는 문지르기만). 끄면 직접 이동 + 번드
   charSpeed: 6.5,
   charAccel: 40,
   charStartAhead: 2.0, // 투구 시 캐릭터가 스톤보다 앞에서 출발하는 거리
@@ -44,7 +46,7 @@ export const DEFAULTS = Object.freeze({
   strokeDurationMs: 110,
   strokeBufferMs: 100, // 스트로크가 끝나기 이만큼 전에 들어온 다음 스트로크는 버리지 않고 이어서 시작
   strokeWindowMs: 750,
-  strokesForFullInput: 6, // 윈도 안 유효 스트로크가 이만큼이면 입력 효율 100%
+  strokesForFullInput: 4, // 윈도 안 유효 스트로크가 이만큼이면 입력 효율 100% (초당 약 5회)
   sweepZoneLength: 0.9,
   sweepZoneHalfWidth: 0.25,
   sweepSmoothingMs: 150,

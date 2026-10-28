@@ -1,12 +1,15 @@
-// 마우스 입력 (명세 3.7, 3.8.1, 3.8.3).
-// 투구 준비: Pointer Events + setPointerCapture (캔버스 밖에서 놓아도 처리).
-// 스위핑: Pointer Lock + movementX/Y로 월드 고정 목표점을 상대 이동.
-//         버튼은 mousedown + e.button으로 받는다 — 다른 버튼을 누른 채 추가로 누르면 pointerdown이 오지 않기 때문.
-import { LAUNCH } from '../core/game.js';
+// 마우스·포인터 입력 (명세 3.7, 3.8).
+// 투구(THROW): 새총 — 아무 곳이나 누른 채 아래로 당기면 반대 방향이 투구 방향, 당긴 길이가 파워. 놓으면 발사.
+//              손가락·마우스 모두 Pointer Events + setPointerCapture (캔버스 밖에서 놓아도 처리).
+// 스위핑
+//   보조 켬(기본): 버튼을 누른 채 위아래로 문지르기 = 밀기/당기기 (터치와 같은 동작). 마우스 잠금 없음.
+//   보조 끔(v1.2): Pointer Lock + movementX/Y로 월드 고정 목표점 이동, 좌클릭 밀기 → 우클릭 당기기.
+//                  버튼은 mousedown + e.button으로 받는다 — 다른 버튼을 누른 채 추가로 누르면 pointerdown이 오지 않기 때문.
+import { SwipeStrokeDetector } from './swipe.js';
 
-const AIM_STATES = new Set(['AIM', 'SPIN', 'POWER']);
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
-const SPIN_FULL_TURN = Math.PI * 1.5; // 이만큼 원을 그리면 spin = ±1
+const AIM_SCALE = 0.5; // 당기는 각도 대비 투구 각도 — 작은 각도를 정밀하게
+const SCRUB_THRESHOLD = 10; // 마우스 문지르기 한 번으로 치는 최소 이동(px)
 
 export class MouseInput {
   constructor(canvas, game, renderer) {
@@ -14,6 +17,7 @@ export class MouseInput {
     this.game = game;
     this.renderer = renderer;
     this.drag = null;
+    this.scrub = null;
     this.locked = false;
     this.lockErrors = 0;
     this.forceAbsolute = false;
@@ -24,7 +28,7 @@ export class MouseInput {
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
     canvas.addEventListener('pointermove', (e) => this.onPointerMove(e));
     canvas.addEventListener('pointerup', (e) => this.onPointerUp(e));
-    canvas.addEventListener('pointercancel', () => (this.drag = null));
+    canvas.addEventListener('pointercancel', () => this.interrupt());
     canvas.addEventListener('mousedown', (e) => this.onMouseDown(e));
     document.addEventListener('mousemove', (e) => this.onMouseMove(e));
     // 우클릭 메뉴는 게임 캔버스에서만 차단. contextmenu 시점은 OS마다 달라서 스트로크 판정에 쓰지 않는다.
@@ -39,9 +43,13 @@ export class MouseInput {
     return this.pointerType === 'touch';
   }
 
-  /** Pointer Lock 미지원·반복 실패·강제 설정 시 레인 탑다운 + 절대 좌표 (명세 3.8.1 대체 모드). 터치는 조이스틱을 쓰므로 해당 없음 */
+  get assist() {
+    return !!this.game.cfg.sweepAssist;
+  }
+
+  /** 직접 이동 모드에서 Pointer Lock을 못 쓰면 레인 탑다운 + 절대 좌표 (명세 3.8.1 대체 모드) */
   get fallback() {
-    return !this.touchMode && (this.unsupported || this.forceAbsolute || this.lockErrors >= 2);
+    return !this.assist && !this.touchMode && (this.unsupported || this.forceAbsolute || this.lockErrors >= 2);
   }
 
   get sweeping() {
@@ -49,58 +57,51 @@ export class MouseInput {
   }
 
   get needsLock() {
-    return this.sweeping && !this.touchMode && !this.fallback && !this.locked;
+    return this.sweeping && !this.assist && !this.touchMode && !this.fallback && !this.locked;
   }
 
   onPointerDown(e) {
     this.pointerType = e.pointerType;
-    if (this.suspended || !AIM_STATES.has(this.game.state) || e.button !== 0) return;
-    this.canvas.setPointerCapture(e.pointerId);
-    const st = this.game.state;
-    if (st === 'AIM') {
-      this.drag = { kind: 'aim' };
-      this.aimAt(e);
-    } else if (st === 'SPIN') {
-      const c = this.renderer.worldToScreen(LAUNCH.x, LAUNCH.y);
-      this.drag = { kind: 'spin', cx: c.x, cy: c.y, last: Math.atan2(e.clientY - c.y, e.clientX - c.x) };
-    } else {
-      this.drag = { kind: 'power', y0: e.clientY };
-      this.game.setPower(0);
+    if (this.suspended) return;
+    if (this.game.state === 'THROW' && e.button === 0) {
+      this.canvas.setPointerCapture(e.pointerId);
+      this.drag = { id: e.pointerId, x0: e.clientX, y0: e.clientY };
+      this.game.setThrow(this.game.aimAngle, 0);
+    } else if (this.sweeping && this.assist && e.pointerType === 'mouse') {
+      this.canvas.setPointerCapture(e.pointerId);
+      this.scrub = { id: e.pointerId, det: new SwipeStrokeDetector(SCRUB_THRESHOLD) };
+      this.scrub.det.start(e.clientY);
     }
   }
 
   onPointerMove(e) {
-    const d = this.drag;
-    if (!d) return;
-    if (d.kind === 'aim') this.aimAt(e);
-    else if (d.kind === 'spin') {
-      // 화면 y가 아래로 증가하므로 atan2 각도 증가 = 화면 시계 방향 = 위에서 본 시계 방향
-      const a = Math.atan2(e.clientY - d.cy, e.clientX - d.cx);
-      let delta = a - d.last;
-      if (delta > Math.PI) delta -= 2 * Math.PI;
-      if (delta < -Math.PI) delta += 2 * Math.PI;
-      d.last = a;
-      this.game.setSpin(this.game.spin + delta / SPIN_FULL_TURN);
-    } else {
-      this.game.setPower((e.clientY - d.y0) / (this.canvas.clientHeight * 0.35));
+    if (this.drag && e.pointerId === this.drag.id) {
+      // 새총: 아래로 당길수록 세게, 당긴 반대 방향으로. 위로 밀면 파워 0 (놓으면 취소)
+      const dx = e.clientX - this.drag.x0;
+      const dy = e.clientY - this.drag.y0;
+      if (dy <= 4) {
+        this.game.setThrow(this.game.aimAngle, 0);
+        return;
+      }
+      const pull = Math.hypot(dx, dy) / (this.canvas.clientHeight * this.game.cfg.maxPullFraction);
+      this.game.setThrow(Math.atan2(-dx, dy) * AIM_SCALE, pull);
+    } else if (this.scrub && e.pointerId === this.scrub.id) {
+      const s = this.scrub.det.move(e.clientY);
+      if (s) this.game.enqueue({ type: 'press', button: s === 'push' ? 0 : 2 });
     }
   }
 
   onPointerUp(e) {
-    const d = this.drag;
-    if (!d) return;
+    if (this.scrub && e.pointerId === this.scrub.id) this.scrub = null;
+    if (!this.drag || e.pointerId !== this.drag.id) return;
     this.drag = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
-    if (d.kind === 'power' && this.game.release() && e.pointerType === 'mouse') this.requestLock();
+    if (this.game.release() && e.pointerType === 'mouse' && !this.assist) this.requestLock();
   }
 
-  aimAt(e) {
-    const p = this.renderer.screenToGround(e.clientX, e.clientY);
-    if (p) this.game.setAimFromPoint(p);
-  }
-
+  /** 직접 이동 모드: 좌클릭 밀기 / 우클릭 당기기 */
   onMouseDown(e) {
-    if (!this.sweeping || this.touchMode) return;
+    if (!this.sweeping || this.touchMode || this.assist) return;
     e.preventDefault();
     if (this.needsLock) {
       this.requestLock(); // 재개 클릭은 스트로크로 세지 않는다
@@ -110,7 +111,7 @@ export class MouseInput {
   }
 
   onMouseMove(e) {
-    if (!this.sweeping || this.touchMode) return;
+    if (!this.sweeping || this.touchMode || this.assist) return;
     if (this.locked) this.game.enqueue({ type: 'move', dx: e.movementX, dy: e.movementY });
     else if (this.fallback) {
       const p = this.renderer.screenToGround(e.clientX, e.clientY);
@@ -142,12 +143,15 @@ export class MouseInput {
   }
 
   interrupt() {
-    this.drag = null; // 스트로크는 누르는 순간만 쓰므로 고착될 누름 상태가 없다
+    // 당기던 중에 끊기면 발사하지 않는다
+    if (this.drag) this.game.setThrow(this.game.aimAngle, 0);
+    this.drag = null;
+    this.scrub = null;
   }
 
   /** 매 프레임: 스위핑이 끝나면 잠금 해제 */
   update() {
     if (!this.sweeping && this.locked) document.exitPointerLock();
-    if (this.suspended) this.drag = null;
+    if (this.suspended) this.interrupt();
   }
 }

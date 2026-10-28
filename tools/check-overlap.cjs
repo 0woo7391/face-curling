@@ -23,9 +23,8 @@ const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay',
     const steps = [
       ['HOME', () => {}],
       ['PART_SELECT', () => { window.__debug.actions.start('record'); window.__debug.paused = true; }],
-      ['AIM', () => { window.__game.selectPart('nose'); }],
-      ['SPIN', () => { window.__game.next(); window.__game.setSpin(0.6); }],
-      ['POWER', () => { window.__game.next(); window.__game.setPower(0.9); }],
+      ['THROW', () => { window.__game.selectPart('nose'); window.__game.setSpin(0.5); }],
+      ['PULL', () => { window.__game.setThrow(0.1, 0.9); }],
       ['SWEEP', () => {
         const g = window.__game; g.release();
         for (let t = 0; t < 140; t++) {
@@ -43,7 +42,7 @@ const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay',
         const g = window.__game;
         for (let i = 0; i < 4000 && g.state !== 'PART_SELECT'; i++) g.tick();
         for (const id of ['left_brow', 'right_brow', 'left_eye', 'right_eye', 'mouth']) {
-          g.selectPart(id); g.next(); g.next(); g.setPower(0.78); g.release();
+          g.selectPart(id); g.setThrow(0, 0.78); g.release();
           for (let i = 0; i < 4000 && !['PART_SELECT', 'RESULT'].includes(g.state); i++) g.tick();
         }
       }],
@@ -73,8 +72,8 @@ const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay',
         }
         // 게임 대상 → 화면 점
         const pts = [];
-        if (['AIM', 'SPIN', 'POWER'].includes(label)) {
-          const pw = label === 'POWER' ? g.power * 0.9 : 0;
+        if (['THROW', 'PULL'].includes(label)) {
+          const pw = label === 'PULL' ? g.power * 0.6 : 0;
           pts.push(['스톤', 0, -pw]);
         }
         if (label === 'SWEEP' || label === 'PAUSE') {

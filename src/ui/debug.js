@@ -14,7 +14,7 @@ export function loadSavedConfig() {
   }
 }
 
-function saveConfig(cfg) {
+export function saveConfig(cfg) {
   const diff = Object.fromEntries(Object.entries(cfg).filter(([k, v]) => DEFAULTS[k] !== v));
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(diff));
@@ -70,6 +70,7 @@ export function createDebugPanel(cfg, renderer, input, actions) {
   vf.add(renderer.options, 'showMinimap').name('보드 미니맵');
   vf.add(renderer.options, 'laneTop').name('레인 탑다운 (T)').listen();
   vf.add(input, 'forceAbsolute').name('대체 모드 강제 (절대 좌표)');
+  vf.add(cfg, 'sweepAssist').name('스위핑 자동 따라가기').listen().onChange(() => saveConfig(cfg));
 
   for (const [title, items] of FOLDERS) {
     const f = gui.addFolder(title);

@@ -2,6 +2,9 @@
 // 캐릭터는 제한 속도·가속도로 목표점을 향해 달린다 (순간이동 없음).
 // 빗자루 머리는 몸에서 스톤 쪽 가로 방향으로 broomReach만큼 떨어져 있다.
 
+/** 목표점까지 거리 × 이 값 = 원하는 속도 (도착 감속). 움직이는 목표를 v / ARRIVE_GAIN만큼 뒤따른다 */
+export const ARRIVE_GAIN = 6;
+
 export class Character {
   constructor(cfg) {
     this.cfg = cfg;
@@ -33,7 +36,7 @@ export class Character {
     const tx = this.target.x - this.pos.x;
     const ty = this.target.y - this.pos.y;
     const d = Math.hypot(tx, ty);
-    const desiredSpeed = Math.min(cfg.charSpeed, d * 6);
+    const desiredSpeed = Math.min(cfg.charSpeed, d * ARRIVE_GAIN);
     const dvx = (d > 1e-6 ? (tx / d) * desiredSpeed : 0) - this.vel.x;
     const dvy = (d > 1e-6 ? (ty / d) * desiredSpeed : 0) - this.vel.y;
     const dv = Math.hypot(dvx, dvy);
