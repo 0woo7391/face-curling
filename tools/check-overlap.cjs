@@ -23,7 +23,7 @@ const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay',
     const steps = [
       ['HOME', () => {}],
       ['PART_SELECT', () => { window.__debug.actions.start('record'); window.__debug.paused = true; }],
-      ['THROW', () => { window.__game.selectPart('nose'); window.__game.setSpin(0.5); }],
+      ['THROW', () => { window.__game.selectPart('nose'); }],
       ['PULL', () => { window.__game.setThrow(0.1, 0.9); }],
       ['SWEEP', () => {
         const g = window.__game; g.release();

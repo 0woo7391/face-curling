@@ -3,12 +3,20 @@
 //   게임 중 ⏸ → 일시정지(#pause): 계속 / 처음부터 / 홈 / 소리 / 조작법 / 튜닝
 // 글자는 최소로. 되돌릴 수 없는 행동(처음부터·홈)은 진행 중일 때 두 번 눌러 확인한다.
 // 상태가 바뀔 때만 DOM을 다시 쓰도록 값을 캐시한다.
-import { partError, partScore } from '../core/scoring.js';
+import { shapeCanvas } from '../render/textures.js';
 
 const $ = (id) => document.getElementById(id);
-const SPIN_LEVELS = [0.5, 1]; // 칩을 누를 때마다 0.5 → 1 → 끔
 const LEARN_STROKES = 3; // 유효 스트로크를 이만큼 하면 스위핑 힌트를 숨긴다
 const CONFIRM_MS = 2500;
+const COACH_KEY = 'face-curling-coached'; // 손가락 안내를 끝낸 단계: '' → 'throw' → 'sweep'
+
+function loadCoached() {
+  try {
+    return localStorage.getItem(COACH_KEY) ?? '';
+  } catch {
+    return '';
+  }
+}
 
 export class Hud {
   constructor(game, actions) {
@@ -18,20 +26,13 @@ export class Hud {
     this.partButtons = new Map();
     this.slots = new Map();
     this.learned = 0;
+    this.coached = loadCoached();
     this.confirming = null;
 
     const on = (id, fn) => $(id).addEventListener('click', fn);
     // 게임
     on('pause-btn', () => actions.pause());
     on('back', () => game.back());
-    // 회전 칩: 같은 쪽을 누를 때마다 세기 0.5 → 1 → 끔, 반대쪽을 누르면 그쪽 0.5부터
-    const cycleSpin = (sign) => {
-      const cur = game.spin * sign;
-      const i = SPIN_LEVELS.findIndex((v) => Math.abs(v - cur) < 1e-6);
-      game.setSpin(cur <= 0 ? sign * SPIN_LEVELS[0] : i >= 0 && i < SPIN_LEVELS.length - 1 ? sign * SPIN_LEVELS[i + 1] : 0);
-    };
-    on('spin-l', () => cycleSpin(-1));
-    on('spin-r', () => cycleSpin(1));
     on('undo', () => game.undoLastThrow());
     // 홈
     on('home-start', () => actions.start('record'));
@@ -81,7 +82,7 @@ export class Hud {
     this.confirming = null;
   }
 
-  /** 부위 버튼과 상단 진행 칸. 사진 얼굴이면 부위 스티커 그림을 쓴다 */
+  /** 부위 버튼과 상단 진행 칸. 이름 옆에 부위 그림 (사진 얼굴 = 부위 스티커, 기본 얼굴 = 스톤 도형) */
   buildParts() {
     const box = $('parts');
     const bar = $('progress');
@@ -91,8 +92,11 @@ export class Hud {
     this.slots.clear();
     this.cache = {};
     const fp = this.game.face?.parts ?? {};
+    this.thumbs = new Map();
     for (const p of this.game.parts) {
-      const thumb = fp[p.id] ? `<img src="${fp[p.id].canvas.toDataURL()}" alt="" />` : `<i style="background:${p.color}"></i>`;
+      const src = (fp[p.id] ? fp[p.id].canvas : shapeCanvas(p)).toDataURL();
+      this.thumbs.set(p.id, src);
+      const thumb = `<img src="${src}" alt="" />`;
       const b = document.createElement('button');
       b.className = 'part';
       b.innerHTML = `${thumb}<span class="name">${p.label}</span><span class="sc"></span>`;
@@ -104,7 +108,7 @@ export class Hud {
       s.className = 'slot';
       s.style.setProperty('--c', p.color);
       s.title = p.label;
-      s.innerHTML = `${fp[p.id] ? `<img src="${fp[p.id].canvas.toDataURL()}" alt="" />` : ''}<b></b>`;
+      s.innerHTML = `${thumb}<b></b>`;
       bar.appendChild(s);
       this.slots.set(p.id, s);
     }
@@ -158,8 +162,7 @@ export class Hud {
 
     // 부위 버튼 + 진행 칸: 던진 부위는 점수, 번드·이탈은 빨간 ✕
     for (const p of g.parts) {
-      const s = g.sim.stones.get(p.id);
-      const score = s && p.status === 'stopped' ? partScore(partError(s, p.q, g.board, g.faceDiagonal), g.cfg.allowedError) : null;
+      const score = p.status === 'stopped' ? g.scoreOf(p)?.score ?? null : null;
       const lost = p.status === 'burned' || p.status === 'out';
       const sc = lost ? '0' : score == null ? '' : score.toFixed(0);
       const b = this.partButtons.get(p.id);
@@ -173,16 +176,10 @@ export class Hud {
       if (score != null && !lost) slot.style.setProperty('--score', `hsl(${Math.round((score / 100) * 120)} 75% 45%)`);
     }
 
-    // 투구: ◀(부위 다시) + 회전 칩. 당기는 중에는 숨겨 화면을 비운다
+    // 투구: 부위 변경 버튼. 당기는 중에는 숨겨 화면을 비운다
     const throwing = st === 'THROW';
     const pulling = throwing && g.power > 0;
     $('back').hidden = !throwing || pulling;
-    $('spin').hidden = !throwing || pulling;
-    const lvl = (sign) => (g.spin * sign > 0 ? (Math.abs(g.spin) > 0.75 ? '●●' : '●') : '');
-    this.set('spinL', $('spin-l').querySelector('i'), lvl(-1));
-    this.set('spinR', $('spin-r').querySelector('i'), lvl(1));
-    $('spin-l').classList.toggle('on', g.spin < 0);
-    $('spin-r').classList.toggle('on', g.spin > 0);
 
     this.set('hint', $('hint'), this.hint(touch));
     const assist = !!g.cfg.sweepAssist;
@@ -191,19 +188,44 @@ export class Hud {
     this.set('nkR', $('next-key').querySelector('.r'), assist ? '▶' : '우클릭 당기기');
     $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && st === 'PART_SELECT');
 
-    // 다음 입력: 마우스는 버튼 그림, 터치는 스와이프 판의 화살표가 밝아진다
+    // 다음 입력: 직접 이동 모드의 마우스 버튼 그림 (흔들기 모드는 아래 세 칸 판)
     $('next-key').hidden = st !== 'SWEEP' || touch;
     // 다음에 흔들 쪽: 흔들기는 push = 오른쪽, 직접 이동 마우스는 push = 좌클릭(왼쪽 칸). 첫 스트로크는 어느 쪽이든
     const ex = g.sweep.expect;
     const keySide = !ex ? 'any' : assist === (ex === 'push') ? 'right' : 'left';
-    const padSide = !ex ? 'any' : ex === 'push' ? 'right' : 'left';
     $('next-key').dataset.expect = keySide;
-    $('touch-swipe').dataset.expect = padSide;
+    // 지금 흔드는 칸 (쓸고 있을 때만 밝힌다): -1 왼쪽 / 0 곧게 / 1 오른쪽
+    $('touch-swipe').dataset.zone = st === 'SWEEP' && g.sweep.intensity > 0.02 ? String(Math.sign(g.steerTarget)) : '';
 
+    this.updateCoach(app);
     $('minimap-frame').style.visibility = renderer.minimapVisible && app.screen === 'game' ? 'visible' : 'hidden';
     $('lock-overlay').hidden = !input.needsLock;
     this.updateOffscreen(renderer);
     this.updateResult();
+  }
+
+  /**
+   * 처음 한 번만 손가락 안내: 첫 투구 전에는 아래로 당기기, 첫 스위핑에서는 좌우로 흔들기.
+   * 직접 해 보면(발사 / 유효 스트로크 LEARN_STROKES번) 다음부터 보이지 않는다.
+   */
+  updateCoach(app) {
+    const g = this.game;
+    if (this.coached === '' && g.stats.throws > 0) this.saveCoach('throw');
+    if (this.coached === 'throw' && this.learned >= LEARN_STROKES) this.saveCoach('sweep');
+    const playing = app.screen === 'game' && !app.paused;
+    const mode = !playing ? '' : this.coached === '' && g.state === 'THROW' && g.power === 0 ? 'pull' : this.coached === 'throw' && g.state === 'SWEEP' ? 'shake' : '';
+    const el = $('coach');
+    el.hidden = !mode;
+    if (mode) el.dataset.mode = mode;
+  }
+
+  saveCoach(step) {
+    this.coached = step;
+    try {
+      localStorage.setItem(COACH_KEY, step);
+    } catch {
+      /* 비공개 창 등: 이번 세션 동안만 기억 */
+    }
   }
 
   /** 홈의 얼굴 카드: 사진 얼굴이 없으면 만들기를 권한다 (명세 3.1: 첫 실행은 얼굴 만들기가 주 행동) */
@@ -314,10 +336,9 @@ export class Hud {
     const r = g.result;
     const rows = r.rows
       .map((row) => {
-        const part = g.parts.find((p) => p.id === row.id);
         const tag = row.status === 'burned' ? '<em>BURNED</em>' : row.status === 'out' ? '<em>이탈</em>' : '';
         const hue = Math.round((row.score / 100) * 120); // 0 빨강 → 120 초록
-        return `<div class="row"><i style="background:${part.color}"></i><span>${row.label}</span>
+        return `<div class="row"><img src="${this.thumbs.get(row.id)}" alt="" /><span>${row.label}</span>
           <div class="bar"><b style="width:${row.score}%;background:hsl(${hue} 75% 50%)"></b>${tag}</div>
           <strong>${row.score.toFixed(0)}</strong></div>`;
       })

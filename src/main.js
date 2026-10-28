@@ -110,6 +110,8 @@ async function main() {
     }
   });
   const debug = createDebugPanel(cfg, renderer, input, actions);
+  // 튜닝 패널 버튼은 개발용 — 주소에 ?debug가 있을 때만 보인다
+  document.body.classList.toggle('debug', new URLSearchParams(location.search).has('debug'));
   debug.updateLayout(game);
 
   window.addEventListener('keydown', (e) => {

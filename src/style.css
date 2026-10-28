@@ -87,12 +87,10 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 }
 #hud:not([data-state="PART_SELECT"]) #parts { display: none; }
 .part {
-  display: grid; grid-template-columns: 10px 1fr auto; gap: 6px; align-items: center; text-align: left; padding: 10px 6px; font-size: 14px;
+  display: grid; grid-template-columns: 28px 1fr auto; gap: 6px; align-items: center; text-align: left; padding: 10px 6px; font-size: 14px;
   background: var(--sticker); color: var(--ink); border: 3px solid var(--sticker); border-radius: 14px; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
 }
-.part i { width: 10px; height: 10px; border-radius: 50%; }
 .part img { width: 28px; height: 22px; object-fit: contain; grid-row: span 1; }
-.part:has(img) { grid-template-columns: 28px 1fr auto; }
 .part .sc { font-variant-numeric: tabular-nums; font-weight: 800; }
 .part.current { border-color: var(--accent); }
 .part:disabled { opacity: 0.55; }
@@ -105,13 +103,6 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
   position: absolute; left: 0; right: 0; bottom: 0; display: flex; flex-direction: column; align-items: center; gap: 8px;
   padding: 10px 10px calc(12px + env(safe-area-inset-bottom)); background: linear-gradient(transparent, var(--panel));
 }
-/* 회전 칩: ⟲ ⟳, 누를 때마다 세기 ● → ●● → 끔 */
-#spin { display: flex; gap: 6px; }
-#spin[hidden] { display: none; }
-#spin button { min-width: 72px; display: flex; align-items: center; justify-content: center; gap: 6px; font-size: 22px; }
-#spin button i { font-size: 10px; font-style: normal; letter-spacing: 1px; min-width: 14px; }
-#spin-l.on { background: #26c6da; border-color: #26c6da; color: var(--ink); }
-#spin-r.on { background: #ff7043; border-color: #ff7043; color: var(--ink); }
 #hint { min-height: 1.4em; font-size: 14px; font-weight: 600; text-align: center; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.6); }
 #controls { display: flex; gap: 10px; }
 #controls button { min-width: 56px; padding: 12px 22px; font-size: 18px; border-radius: 14px; }
@@ -164,8 +155,8 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 }
 #result .big { margin: 0 0 2px; font-size: 40px; font-weight: 900; line-height: 1; }
 #result .big small { font-size: 16px; margin-left: 4px; color: var(--muted); }
-#result .row { display: grid; grid-template-columns: 12px 64px 1fr 34px; gap: 8px; align-items: center; font-size: 14px; }
-#result .row i { width: 12px; height: 12px; border-radius: 50%; }
+#result .row { display: grid; grid-template-columns: 30px 64px 1fr 34px; gap: 8px; align-items: center; font-size: 14px; }
+#result .row img { width: 30px; height: 22px; object-fit: contain; }
 #result .row strong { text-align: right; font-variant-numeric: tabular-nums; }
 #result .bar { position: relative; height: 14px; border-radius: 7px; background: var(--chip); overflow: hidden; }
 #result .bar b { display: block; height: 100%; border-radius: 7px; }
@@ -183,22 +174,36 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 /* 튜닝 패널: PC에서는 세로 화면 바깥 오른쪽, 폰에서는 상단 아래 */
 .lil-gui.lil-auto-place { top: calc(60px + env(safe-area-inset-top)); right: 8px; max-height: calc(100% - 150px); }
 
-/* ── 터치 조작 ── */
+/* ── 처음 한 번 손가락 안내 ── */
+#coach { position: absolute; left: 50%; font-size: 46px; pointer-events: none; filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.6)); }
+#coach[hidden] { display: none; }
+#coach[data-mode="pull"] { top: 38%; animation: coach-pull 1.6s ease-in-out infinite; }
+#coach[data-mode="shake"] { bottom: calc(74px + 11% + env(safe-area-inset-bottom)); animation: coach-shake 0.9s ease-in-out infinite; }
+@keyframes coach-pull { 0%, 15% { transform: translate(-50%, 0); opacity: 0; } 25% { opacity: 1; } 75% { transform: translate(-50%, 22vh); opacity: 1; } 100% { transform: translate(-50%, 22vh); opacity: 0; } }
+@keyframes coach-shake { 0%, 100% { transform: translate(-90%, 0) rotate(-12deg); } 50% { transform: translate(-10%, 0) rotate(12deg); } }
+
+/* ── 스위핑 판 ── */
 #touch-swipe { display: none; }
-#hud[data-input="touch"][data-state="SWEEP"] #touch-swipe,
-#hud[data-input="touch"][data-state="SETTLING"] #touch-swipe { display: flex; }
-/* 보조 모드: 화면 어디서든 문지르므로 판을 가로 전체로 */
-#hud[data-assist="1"] #touch-swipe { left: 10px; width: auto; height: 26%; }
+/* 흔들기(기본): 마우스·터치 모두 판을 보여 준다. 마우스 버튼 그림은 직접 이동 모드에서만 */
+#hud[data-assist="1"]:is([data-state="SWEEP"], [data-state="SETTLING"]) #touch-swipe,
+#hud[data-input="touch"]:is([data-state="SWEEP"], [data-state="SETTLING"]) #touch-swipe { display: grid; }
+#hud[data-assist="1"] #next-key { display: none; }
 #touch-swipe {
-  position: absolute; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); width: calc(50% - 20px); height: 32%;
-  flex-direction: row; justify-content: space-between; align-items: center; padding: 0 18px;
-  border: 3px dashed rgba(255, 255, 255, 0.3); border-radius: 22px; font-size: 15px; font-weight: 800; transition: background 0.08s;
+  position: absolute; left: 10px; right: 10px; bottom: calc(74px + env(safe-area-inset-bottom)); height: 22%;
+  grid-template-columns: 1fr 1fr 1fr; gap: 6px; transition: background 0.08s; border-radius: 22px;
 }
-#touch-swipe span { font-size: 28px; color: rgba(255, 255, 255, 0.3); transition: color 0.1s, transform 0.1s; }
-#touch-swipe b { font-size: 13px; font-weight: 700; color: rgba(255, 255, 255, 0.55); }
-#touch-swipe:is([data-expect="left"], [data-expect="any"]) .l, #touch-swipe:is([data-expect="right"], [data-expect="any"]) .r { color: #fff; transform: scale(1.25); }
-#touch-swipe[data-flash="push"] { background: rgba(118, 255, 3, 0.22); }
-#touch-swipe[data-flash="pull"] { background: rgba(79, 195, 247, 0.22); }
+#hud:not([data-assist="1"]) #touch-swipe { left: auto; width: calc(50% - 20px); height: 32%; grid-template-columns: 1fr; }
+#hud:not([data-assist="1"]) #touch-swipe span:not([data-z="0"]) { display: none; }
+#touch-swipe span {
+  display: flex; align-items: center; justify-content: center; text-align: center; font-size: 14px; font-weight: 800;
+  color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 3px rgba(0, 0, 0, 0.7);
+  border: 3px dashed rgba(255, 255, 255, 0.45); border-radius: 18px; background: rgba(15, 20, 30, 0.18); transition: background 0.1s, border-color 0.1s;
+}
+#touch-swipe[data-zone="-1"] [data-z="-1"], #touch-swipe[data-zone="0"] [data-z="0"], #touch-swipe[data-zone="1"] [data-z="1"] {
+  background: rgba(118, 255, 3, 0.3); border-style: solid; border-color: #76ff03; color: #fff;
+}
+#touch-swipe[data-flash] span { border-color: rgba(255, 255, 255, 0.8); }
+
 #touch-joy { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.08); }
 #touch-joy[hidden] { display: none; }
 #touch-knob { position: absolute; left: 29px; top: 29px; width: 48px; height: 48px; border-radius: 50%; background: rgba(0, 229, 255, 0.8); }
@@ -224,6 +229,11 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 button.big { padding: 16px; font-size: 22px; border-radius: 16px; }
 .home-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .home-row button { padding: 12px; }
+.home-row button small { display: block; font-size: 11px; font-weight: 600; color: var(--muted); margin-top: 2px; }
+/* 튜닝(개발용)은 주소에 ?debug가 있을 때만 */
+body:not(.debug) :is(#home-tune, #p-tune) { display: none; }
+/* 결과 화면: 위쪽 진행 칸은 아래 점수 막대와 같은 정보라 숨긴다 */
+#hud[data-state="RESULT"] #progress { visibility: hidden; }
 .home-foot { display: flex; justify-content: flex-end; gap: 8px; }
 .home-foot button { width: 44px; height: 44px; padding: 0; }
 

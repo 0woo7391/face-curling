@@ -401,15 +401,21 @@ export class Game {
 
   // ── 채점 (6.3) ──
 
+  /** 지금 놓인 자리 기준 한 부위의 점수 (보드에 없으면 null). 진행 칸·멈춤 표시·결과가 모두 이것을 쓴다 */
+  scoreOf(p) {
+    const s = this.sim.stones.get(p.id);
+    if (!s) return null;
+    const err = partError(s, p.q, this.board, this.faceDiagonal);
+    // 기울기: 똑바로에서 90°마다 tiltPenalty만큼 감점 (180° = 2배)
+    const tilt = tiltOf(s.angle);
+    return { err, tilt, score: partScore(err, this.cfg.allowedError) * (1 - (this.cfg.tiltPenalty * tilt) / (Math.PI / 2)) };
+  }
+
   computeScores() {
     const rows = this.parts.map((p) => {
-      const s = this.sim.stones.get(p.id);
-      const placed = s && (p.status === 'stopped' || p.status === 'moving');
-      const err = placed ? partError(s, p.q, this.board, this.faceDiagonal) : null;
-      // 기울기: 똑바로에서 90°마다 tiltPenalty만큼 감점 (180° = 2배)
-      const tilt = placed ? tiltOf(s.angle) : null;
-      const score = placed ? partScore(err, this.cfg.allowedError) * (1 - (this.cfg.tiltPenalty * tilt) / (Math.PI / 2)) : 0;
-      return { id: p.id, label: p.label, status: p.status, burnCause: p.burnCause, err, tilt, score };
+      const placed = p.status === 'stopped' || p.status === 'moving';
+      const r = placed ? this.scoreOf(p) : null;
+      return { id: p.id, label: p.label, status: p.status, burnCause: p.burnCause, err: r?.err ?? null, tilt: r?.tilt ?? null, score: r?.score ?? 0 };
     });
     const total = rows.reduce((a, r) => a + r.score, 0);
     return { rows, total, mean: total / rows.length };

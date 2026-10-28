@@ -4,6 +4,7 @@
 // - 스톤이 지나간 자국 (스위핑한 구간은 더 밝게)
 // - 카메라 펀치 (충돌·발사)
 import * as THREE from 'three';
+import { labelTexture } from './textures.js';
 
 const V = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
 const MAX_PARTICLES = 400;
@@ -70,6 +71,16 @@ export class Fx {
     r.mesh.material.color.set(color);
     r.mesh.position.copy(V(x, y, 0.02));
     r.mesh.visible = true;
+  }
+
+  /** 떠오르며 사라지는 글자 (멈춘 자리의 점수) */
+  label(x, y, text, color) {
+    const sp = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(text, color), depthTest: false, transparent: true }));
+    sp.renderOrder = 20;
+    sp.scale.set(1.1, 0.31, 1);
+    sp.position.copy(V(x, y, 0.6));
+    this.scene.add(sp);
+    (this.labels ??= []).push({ sp, age: 0, life: 1.6 });
   }
 
   // ── 게임 이벤트 ──
@@ -156,6 +167,19 @@ export class Fx {
       r.mesh.scale.setScalar(s);
       r.mesh.material.opacity = 1 - t;
     }
+
+    for (const l of this.labels ?? []) {
+      l.age += dt;
+      const t = l.age / l.life;
+      l.sp.position.y = 0.6 + 0.5 * Math.min(1, t * 2);
+      l.sp.material.opacity = t < 0.6 ? 1 : Math.max(0, 1 - (t - 0.6) / 0.4);
+      if (t >= 1) {
+        this.scene.remove(l.sp);
+        l.sp.material.map.dispose();
+        l.sp.material.dispose();
+      }
+    }
+    if (this.labels) this.labels = this.labels.filter((l) => l.age < l.life);
 
     this.updateTrails(game);
     this.punch *= Math.exp(-dt * 10);

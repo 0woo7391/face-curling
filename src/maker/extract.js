@@ -1,5 +1,5 @@
 // 사진 → 게임용 얼굴 데이터 (명세 3.2~3.4, 6.2).
-//   크롭(1:1, N×N) → 부위 마스크(자동 + 손 보정) → 빈 얼굴(채우기) → 부위 스티커(흰 테두리, 방향 A)
+//   크롭(1:1, N×N) → 부위 마스크(자동 + 손 보정) → 빈 얼굴(채우기) → 부위 스티커(테두리 없음)
 import { FACE_PARTS } from '../core/board.js';
 import { boxBlur, dilate, alphaStats, inpaint } from './imageops.js';
 import { radialOutline } from '../core/shape.js';
@@ -99,32 +99,28 @@ function blurRGB(rgba, w, h, r) {
 }
 
 /**
- * 부위 스티커: 사진 조각 + 흰 다이컷 테두리. 결과 화면에서 실제 크기로 붙인다 (명세 3.10, 5.3).
+ * 부위 스티커: 마스크대로 오려 낸 사진 조각 (흰 테두리 없음 — 결과 화면에서 빛나 보이지 않게). 결과 화면에서 실제 크기로 붙인다 (명세 3.10, 5.3).
  * @returns {{canvas, rect:{x,y,w,h}, anchor:{x,y}}} rect·anchor는 q 좌표. anchor = 마스크 무게중심 = 채점 기준점
  */
-export function makeSticker(crop, alpha, border = 5) {
+export function makeSticker(crop, alpha) {
   const size = crop.width;
   const st = alphaStats(alpha, size, size);
   if (!st) return null;
-  const m = border + 3;
+  const m = 3;
   const x0 = Math.max(0, st.box.x0 - m);
   const y0 = Math.max(0, st.box.y0 - m);
   const x1 = Math.min(size, st.box.x1 + m);
   const y1 = Math.min(size, st.box.y1 + m);
   const w = x1 - x0;
   const h = y1 - y0;
-  const outline = boxBlur(dilate(alpha, size, size, border), size, size, 1);
   const src = crop.getContext('2d').getImageData(x0, y0, w, h).data;
   const out = new Uint8ClampedArray(w * h * 4);
   for (let y = 0; y < h; y++) {
     for (let x = 0; x < w; x++) {
       const i = (y + y0) * size + (x + x0);
-      const a = alpha[i] / 255;
-      const o = outline[i] / 255;
       const j = (y * w + x) * 4;
-      // 흰 테두리 위에 사진 조각을 얹는다
-      for (let c = 0; c < 3; c++) out[j + c] = src[j + c] * a + 255 * (1 - a);
-      out[j + 3] = Math.max(a, o) * 255;
+      for (let c = 0; c < 3; c++) out[j + c] = src[j + c];
+      out[j + 3] = alpha[i];
     }
   }
   const c = canvas(w, h);
@@ -133,7 +129,7 @@ export function makeSticker(crop, alpha, border = 5) {
 }
 
 /**
- * 스티커 윤곽 (흰 테두리 포함) = 스톤 모양. 앵커 기준 q 차이 [{x, y}]
+ * 스티커 윤곽 = 스톤 모양. 앵커 기준 q 차이 [{x, y}]
  * 저장된 얼굴에는 윤곽을 따로 저장하지 않고 불러올 때 스티커에서 다시 만든다.
  */
 export function stickerOutline(sticker, size = N) {

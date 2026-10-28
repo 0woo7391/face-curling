@@ -34,13 +34,14 @@ const basic = (color, opacity = 1) =>
 /** 세로 막대 게이지 (파워·속도): 투명한 통 + 채움 + 위 고리. fill.scale.y = 0..1 */
 function makeGauge() {
   const group = new THREE.Group();
+  // 얼음(밝은 바탕) 위에서도 보이게 어두운 통
   const frame = new THREE.Mesh(
-    new THREE.CylinderGeometry(0.07, 0.07, 1, 16, 1, true),
-    new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+    new THREE.CylinderGeometry(0.075, 0.075, 1, 16, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#1b2430', transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false }),
   );
   frame.position.y = 0.5;
   const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 16), new THREE.MeshBasicMaterial({ color: '#66bb6a', toneMapped: false }));
-  const cap = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 8, 24), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+  const cap = new THREE.Mesh(new THREE.TorusGeometry(0.075, 0.014, 8, 24), new THREE.MeshBasicMaterial({ color: '#1b2430' }));
   cap.rotation.x = Math.PI / 2;
   cap.position.y = 1;
   group.add(frame, fill, cap);
@@ -236,10 +237,8 @@ export class Renderer {
 
   /**
    * 투구 준비 표시 — 서로 겹치지 않게 자리를 나눈다.
-   * - 회전: 스톤에 딱 붙은 고리(길이·두께 = 세기) + 스톤 손잡이가 그 속도로 제자리에서 돈다
-   * - 방향: 회전 고리 바깥에서 시작하는 화살표
-   * - 파워: 스톤 오른쪽에 서 있는 막대 게이지 + 스톤이 뒤로 당겨짐
-   * 지금 단계의 표시만 진하게, 끝난 단계는 흐리게.
+   * - 방향: 레인 끝까지 곧은 흰 선 (당기기 전부터)
+   * - 파워: 당기는 동안만 화살표(길이·색 = 세기) + 스톤 오른쪽 막대 게이지 + 스톤이 뒤로 당겨짐
    */
   buildThrowFeedback(game) {
     this.previewStone = this.makeStone(game.parts[0]);
@@ -254,11 +253,7 @@ export class Renderer {
     this.aimLine = flatStrip('#ffffff', 0.35);
     // 굴러가는 동안 속도 막대: 빠르면 길고 초록, 느려질수록 짧고 빨강
     ({ group: this.speedGauge, fill: this.speedFill } = makeGauge());
-
-    this.spinArc = null;
-    this.spinHead = flatTriangle('#ff7043', 0.06, 0.11);
-    this.spinHead.material.transparent = true;
-    this.scene.add(this.previewStone, this.aim, this.gauge, this.spinHead, this.aimLine, this.speedGauge);
+    this.scene.add(this.previewStone, this.aim, this.gauge, this.aimLine, this.speedGauge);
   }
 
   buildCharacter() {
@@ -277,7 +272,7 @@ export class Renderer {
     this.scene.add(this.character, this.stick, this.broomHead, this.target);
   }
 
-  /** 스위핑 반응: 스톤 앞 끌림 화살표, 얼음 녹는 띠, 위험할 때만 나타나는 경고 고리 */
+  /** 스위핑 반응: 스톤 앞 끌림 화살표, 위험할 때만 나타나는 경고 고리 */
   buildSweepFeedback(game) {
     const { cfg } = game;
     // 끌림 화살표: 방향 = 스톤이 끌리는 쪽(흔드는 자리), 길이·색 = 스위핑 세기
@@ -288,11 +283,10 @@ export class Renderer {
       m.material.depthTest = false;
       m.renderOrder = 10;
     }
-    this.melt = flatStrip('#b3e5fc', 0);
     // 경고 고리는 스톤마다 크기가 달라 그 스톤의 감싸는 반지름으로 다시 만든다 (fitRing)
     this.cushionWarn = flatRing(1, 1.1, '#ffd600', 0.9);
     this.bodyWarn = flatRing(cfg.bodyJudgeRadius + 0.02, cfg.bodyJudgeRadius + 0.07, '#ff1744', 0.9);
-    this.scene.add(this.pullShaft, this.pullHead, this.melt, this.cushionWarn, this.bodyWarn);
+    this.scene.add(this.pullShaft, this.pullHead, this.cushionWarn, this.bodyWarn);
   }
 
   buildDebugSensors(game) {
@@ -324,7 +318,8 @@ export class Renderer {
     for (const [id, p] of Object.entries(game.face.parts)) {
       const geo = new THREE.PlaneGeometry(1, 1);
       geo.rotateX(-Math.PI / 2);
-      const m = new THREE.Mesh(geo, new THREE.MeshBasicMaterial({ map: canvasTexture(p.canvas), transparent: true, depthWrite: false, toneMapped: false }));
+      // 조명을 받는 보통 재질 — 빛나 보이지 않고 보드 사진과 같은 밝기
+      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: canvasTexture(p.canvas), transparent: true, depthWrite: false, roughness: 0.6 }));
       m.visible = false;
       m.userData = {
         w: p.rect.w * B,
@@ -374,7 +369,14 @@ export class Renderer {
 
   handleEvents(events, game) {
     this.fx.handle(events, game);
-    for (const e of events) if (e.type === 'stroke' && e.valid) this.broomPulse = 1;
+    for (const e of events) {
+      if (e.type === 'stroke' && e.valid) this.broomPulse = 1;
+      // 던진 스톤이 멈추면 그 자리에 점수가 떠오른다 (0 빨강 → 100 초록)
+      if (e.type === 'stop' && e.id === game.throwInfo?.partId) {
+        const r = game.scoreOf(game.parts.find((p) => p.id === e.id));
+        if (r) this.fx.label(e.x, e.y, `${Math.round(r.score)}점`, `hsl(${Math.round((r.score / 100) * 120)} 85% 55%)`);
+      }
+    }
   }
 
   // ── 좌표 변환 ──
@@ -510,12 +512,9 @@ export class Renderer {
     const st = game.state;
     const aiming = st === 'THROW';
     const pulling = aiming && game.power > 0;
-    this.previewStone.visible = this.aim.visible = this.aimLine.visible = aiming;
-    this.gauge.visible = pulling;
-    if (!aiming) {
-      this.updateSpinArc(0, false);
-      return;
-    }
+    this.previewStone.visible = this.aimLine.visible = aiming;
+    this.aim.visible = this.gauge.visible = pulling;
+    if (!aiming) return;
     this.setPreviewPart(game.currentPart);
     const dx = Math.sin(game.aimAngle);
     const dy = Math.cos(game.aimAngle);
@@ -534,69 +533,19 @@ export class Renderer {
       this.gaugeFill.material.color.copy(powerColor);
     }
 
-    // 회전: 스톤이 세기만큼 제자리에서 천천히 돈다 (시계 = +). 회전을 끄면 똑바로 돌아온다
-    this.spinAngle = game.spin ? (this.spinAngle ?? 0) + game.spin * 2 * (this.lastDt ?? 0.016) : 0;
-    this.previewStone.rotation.y = -this.spinAngle;
-
-    // 방향 화살표: 회전 고리 바깥에서 시작. 파워 단계에서는 세기만큼 길어지고 색이 바뀐다
-    const start = { x: stone.x + dx * (r * 1.4 + 0.2), y: stone.y + dy * (r * 1.4 + 0.2) };
-    const len = pulling ? 0.6 + 3 * pw : 1.2;
-    const tip = { x: start.x + dx * len, y: start.y + dy * len };
-    placeStrip(this.aimShaft, start, tip, pulling ? 0.09 : 0.06, 0.015);
-    this.aimHead.position.copy(V(tip.x, tip.y, 0.016));
-    this.aimHead.rotation.y = -game.aimAngle;
-    const aimColor = pulling ? powerColor : new THREE.Color('#ffd54f');
-    const aimOpacity = pulling ? 1 : 0.45; // 당기기 전에는 흐린 기본 방향
-    for (const m of [this.aimShaft, this.aimHead]) {
-      m.material.color.copy(aimColor);
-      m.material.opacity = aimOpacity;
+    // 파워 화살표: 스톤 앞에서 시작, 세게 당길수록 길고 빨갛다
+    if (pulling) {
+      const start = { x: stone.x + dx * (r + 0.2), y: stone.y + dy * (r + 0.2) };
+      const len = 0.6 + 3 * pw;
+      const tip = { x: start.x + dx * len, y: start.y + dy * len };
+      placeStrip(this.aimShaft, start, tip, 0.09, 0.015);
+      this.aimHead.position.copy(V(tip.x, tip.y, 0.016));
+      this.aimHead.rotation.y = -game.aimAngle;
+      for (const m of [this.aimShaft, this.aimHead]) m.material.color.copy(powerColor);
     }
-
-    this.updateSpinArc(game.spin, true, stone, 0.95, r);
 
     const lineLen = (this.cfg.laneLength - stone.y) / Math.max(0.2, dy);
     placeStrip(this.aimLine, stone, { x: stone.x + dx * lineLen, y: stone.y + dy * lineLen }, 0.035, 0.006);
-  }
-
-  /** 회전 고리: 스톤에 딱 붙어서, 길이·두께 = 세기, 화살촉 = 방향, 색 = 시계(주황)/반시계(청록) */
-  updateSpinArc(spin, visible, center = LAUNCH, opacity = 0.95, r = this.cfg.stoneRadius) {
-    const key = visible ? `${Math.round(spin * 100)}:${r.toFixed(3)}` : null;
-    if (key !== this.spinKey) {
-      this.spinKey = key;
-      if (this.spinArc) {
-        this.scene.remove(this.spinArc);
-        this.spinArc.geometry.dispose();
-        this.spinArc = null;
-      }
-      if (visible && spin !== 0) {
-        const a = Math.abs(spin);
-        const len = a * Math.PI * 1.6;
-        const R0 = r + 0.08;
-        const R1 = R0 + 0.025 + 0.07 * a;
-        // RingGeometry 각도는 위에서 볼 때 반시계 방향. 시계(+)는 시작점을 len만큼 당겨서 그린다.
-        const startA = spin > 0 ? Math.PI / 2 - len : Math.PI / 2;
-        const color = spin > 0 ? '#ff7043' : '#26c6da';
-        const mat = basic(color, 0.95);
-        mat.transparent = true;
-        this.spinArc = new THREE.Mesh(new THREE.RingGeometry(R0, R1, 48, 1, startA, len), mat);
-        this.spinArc.rotation.x = -Math.PI / 2;
-        this.scene.add(this.spinArc);
-        const end = spin > 0 ? startA : startA + len;
-        this.spinArcEnd = { end, Rm: (R0 + R1) / 2, cw: spin > 0, a };
-        this.spinHead.material.color.set(color);
-      }
-    }
-    this.spinHead.visible = !!this.spinArc;
-    if (!this.spinArc) return;
-    this.spinArc.position.copy(V(center.x, center.y, 0.012));
-    this.spinArc.material.opacity = opacity;
-    const { end, Rm, cw, a } = this.spinArcEnd;
-    const tx = cw ? Math.sin(end) : -Math.sin(end);
-    const ty = cw ? -Math.cos(end) : Math.cos(end);
-    this.spinHead.position.copy(V(center.x + Math.cos(end) * Rm, center.y + Math.sin(end) * Rm, 0.013));
-    this.spinHead.rotation.y = -Math.atan2(tx, ty);
-    this.spinHead.scale.setScalar(0.8 + a);
-    this.spinHead.material.opacity = opacity;
   }
 
   renderCharacter(game, alpha, dt) {
@@ -647,18 +596,13 @@ export class Renderer {
     }
 
     const s = game.sweep.intensity;
-    this.pullShaft.visible = this.pullHead.visible = this.melt.visible = sweeping && s > 0.02;
-    if (this.melt.visible) {
+    this.pullShaft.visible = this.pullHead.visible = sweeping && s > 0.02;
+    if (this.pullShaft.visible) {
       const p = { x: lerp(cur.prevX, cur.x, alpha), y: lerp(cur.prevY, cur.y, alpha) };
-      // 스톤 앞 얼음이 녹는 띠: 세게 쓸수록 진하고 길다
       const sp = Math.hypot(cur.vx, cur.vy) || 1;
       const d = { x: cur.vx / sp, y: cur.vy / sp };
       const front = stoneExtent(cur, d.x, d.y, cfg);
-      const half = Math.max(stoneExtent(cur, d.y, -d.x, cfg), stoneExtent(cur, -d.y, d.x, cfg));
       const a = { x: p.x + d.x * front, y: p.y + d.y * front };
-      const b = { x: a.x + d.x * (0.4 + 0.8 * s), y: a.y + d.y * (0.4 + 0.8 * s) };
-      placeStrip(this.melt, a, b, half * 2.2, 0.007);
-      this.melt.material.opacity = 0.15 + 0.5 * s;
       // 끌림 화살표: 진행 방향을 흔드는 쪽으로 꺾은 방향 (오른쪽 수직 = (d.y, -d.x))
       const ux = d.x + d.y * game.steer;
       const uy = d.y - d.x * game.steer;

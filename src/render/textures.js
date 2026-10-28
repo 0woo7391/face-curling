@@ -34,20 +34,14 @@ export function faceBoardTexture(box) {
   ellipse(cx, cy, rx, ry);
   g.fillStyle = '#4e342e';
   ellipse(cx, cy - ry * 0.55, rx * 0.98, ry * 0.42, Math.PI, Math.PI * 2);
-
-  g.fillStyle = 'rgba(0,0,0,0.38)';
-  g.font = 'bold 34px system-ui, sans-serif';
-  g.textAlign = 'center';
-  g.fillText('▼ 턱 · 투구자 쪽', cx, N - 24);
-  g.fillText('POC A 가상 평균 얼굴', cx, 48);
   return finish(c);
 }
 
 /**
- * 기본 얼굴 스톤 윗면: 부위 색 모양 + 흰 테두리 + 아이콘. 캔버스 = 모양의 테두리 상자(texRect)
- * shape는 로컬 m 좌표(y 위), 캔버스는 y 아래이므로 뒤집어 그린다.
+ * 기본 얼굴 스톤 윗면 그림: 부위 색 모양 + 흰 테두리 + 아이콘. 캔버스 = 모양의 테두리 상자(texRect)
+ * shape는 로컬 m 좌표(y 위), 캔버스는 y 아래이므로 뒤집어 그린다. HUD의 부위 그림으로도 쓴다.
  */
-export function shapeTexture(part) {
+export function shapeCanvas(part) {
   const S = 256;
   const { x0, y0, w, h } = part.texRect;
   const k = S / Math.max(w, h);
@@ -68,8 +62,10 @@ export function shapeTexture(part) {
   g.font = `${Math.round(Math.min(c.width, c.height) * 0.55)}px system-ui, "Apple Color Emoji", "Segoe UI Emoji", sans-serif`;
   g.fillStyle = '#fff';
   g.fillText(part.icon, (-x0) * k, (y0 + h) * k);
-  return finish(c);
+  return c;
 }
+
+export const shapeTexture = (part) => finish(shapeCanvas(part));
 
 export function labelTexture(text, color = '#ffffff') {
   const c = document.createElement('canvas');

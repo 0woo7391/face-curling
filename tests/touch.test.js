@@ -73,11 +73,13 @@ describe('HandTracker', () => {
 
 describe('steerFromX', () => {
   const rect = { left: 0, width: 400 };
-  it('가운데 근처는 곧게, 끝으로 갈수록 그쪽', () => {
+  it('가운데 칸은 곧게, 양쪽 칸은 바깥으로 갈수록 그쪽', () => {
     expect(steerFromX(200, rect)).toBe(0);
-    expect(steerFromX(215, rect)).toBe(0); // 데드존
+    expect(steerFromX(265, rect)).toBe(0); // 가운데 칸 (폭의 1/3)
     expect(steerFromX(0, rect)).toBe(-1);
     expect(steerFromX(400, rect)).toBe(1);
-    expect(steerFromX(300, rect)).toBeGreaterThan(0.5);
+    expect(steerFromX(370, rect)).toBe(1); // 가장자리 10%는 최대
+    expect(steerFromX(320, rect)).toBeGreaterThan(0.3);
+    expect(steerFromX(320, rect)).toBeLessThan(1);
   });
 });

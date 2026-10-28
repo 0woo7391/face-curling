@@ -24,11 +24,7 @@
       <footer id="bottom">
         <div id="hint"></div>
         <div id="controls">
-          <button id="back" hidden aria-label="부위 다시 고르기">◀</button>
-          <div id="spin" hidden role="group" aria-label="회전">
-            <button id="spin-l" aria-label="왼쪽으로 휘게">⟲<i></i></button>
-            <button id="spin-r" aria-label="오른쪽으로 휘게">⟳<i></i></button>
-          </div>
+          <button id="back" hidden>◀ 부위 변경</button>
           <button id="undo" hidden>↶ 되돌리기</button>
         </div>
       </footer>
@@ -36,9 +32,12 @@
       <div id="next-key" hidden><b class="l"></b><b class="r"></b></div>
 
       <div id="minimap-frame"></div>
-      <div id="touch-swipe"><span class="l">◀</span><b>좌우로 문지르기</b><span class="r">▶</span></div>
+      <!-- 스위핑 판: 흔드는 칸 = 스톤이 끌리는 쪽. 지금 흔드는 칸이 밝아진다 -->
+      <div id="touch-swipe"><span data-z="-1">◀ 왼쪽으로</span><span data-z="0">곧게</span><span data-z="1">오른쪽으로 ▶</span></div>
       <div id="touch-joy" hidden><div id="touch-knob"></div></div>
       <div id="offscreen" hidden></div>
+      <!-- 처음 한 번만: 손가락이 동작을 보여 준다 (당기기 / 좌우로 흔들기) -->
+      <div id="coach" hidden aria-hidden="true">👆</div>
 
       <div id="vignette"></div>
       <div id="stamp">BURNED</div>
@@ -56,7 +55,7 @@
           </div>
           <button id="home-start" class="primary big">시작</button>
           <div class="home-row">
-            <button id="home-practice">연습</button>
+            <button id="home-practice">연습<small>실수 되돌리기</small></button>
             <button id="home-help">조작법</button>
           </div>
           <div class="home-foot">
@@ -84,7 +83,6 @@
         <h2>조작법</h2>
         <ol>
           <li><b>던지기</b>: 부위를 고르고, 화면을 누른 채 <b>아래로 당겼다 놓기</b>. 당긴 반대 방향으로, 많이 당길수록 세게</li>
-          <li><b>회전</b>: 던지기 전에 ⟲ ⟳. 누를 때마다 세게 → 끔. ⟳는 오른쪽, ⟲는 왼쪽으로 휨</li>
           <li><b>스위핑</b>: 캐릭터가 알아서 스톤을 따라갑니다. PC는 마우스 버튼을 <b>누른 채 좌우로 흔들고</b>, 폰은 화면을 <b>좌우로 문지르세요</b>. 방향이 바뀔 때마다 한 번 쓸고, 쓸면 덜 휘고 조금 더 멀리 갑니다. 화면 <b>왼쪽에서 흔들면 왼쪽으로, 오른쪽에서 흔들면 오른쪽으로</b> 끌려옵니다</li>
           <li>스톤 둘레 고리가 찰수록 세게 쓸고 있는 것. 언제 쓸고 언제 멈출지가 실력</li>
           <li><kbd>P</kbd>·<kbd>Esc</kbd> 일시정지 · <kbd>T</kbd> 레인 전체 보기</li>
