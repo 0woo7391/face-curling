@@ -148,6 +148,10 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #lock-overlay small { margin-left: 6px; font-size: 11px; font-weight: 500; color: #4a5a6e; }
 #lock-overlay[hidden], #result[hidden] { display: none; }
 
+/* ── 결과: 위 = 얼굴 그림(2D), 아래 = 점수 시트 ── */
+#result-art { position: absolute; left: 50%; transform: translateX(-50%); border-radius: 14px; box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45); pointer-events: none; }
+#result-art[hidden] { display: none; }
+#hud[data-paused="1"] #result-art { display: none; }
 /* ── 결과: 하단 시트 ── */
 #result {
   position: absolute; left: 8px; right: 8px; bottom: calc(8px + env(safe-area-inset-bottom)); max-height: 46%; overflow: auto;

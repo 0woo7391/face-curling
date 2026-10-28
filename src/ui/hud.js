@@ -4,6 +4,7 @@
 // 글자는 최소로. 되돌릴 수 없는 행동(처음부터·홈)은 진행 중일 때 두 번 눌러 확인한다.
 // 상태가 바뀔 때만 DOM을 다시 쓰도록 값을 캐시한다.
 import { shapeCanvas } from '../render/textures.js';
+import { drawResultArt, RESULT_ART_DURATION } from './resultArt.js';
 
 const $ = (id) => document.getElementById(id);
 const LEARN_STROKES = 3; // 유효 스트로크를 이만큼 하면 스위핑 힌트를 숨긴다
@@ -202,6 +203,30 @@ export class Hud {
     $('lock-overlay').hidden = !input.needsLock;
     this.updateOffscreen(renderer);
     this.updateResult();
+    this.updateResultArt(app);
+  }
+
+  /** 결과 그림: 위쪽 막대와 점수 시트 사이 빈 공간에 정사각으로. 부위가 다 붙을 때까지만 다시 그린다 */
+  updateResultArt(app) {
+    const g = this.game;
+    const el = $('result-art');
+    const show = g.state === 'RESULT' && app.screen === 'game';
+    el.hidden = !show;
+    if (!show) {
+      this.artStart = null;
+      return;
+    }
+    const S = $('stage').getBoundingClientRect();
+    const top = $('topbar').getBoundingClientRect().bottom - S.top + 8;
+    const bottom = $('result').getBoundingClientRect().top - S.top - 10;
+    const size = Math.max(120, Math.min(S.width - 24, bottom - top));
+    el.style.top = `${top + Math.max(0, (bottom - top - size) / 2)}px`;
+    el.style.width = el.style.height = `${size}px`;
+    this.artStart ??= performance.now();
+    const t = (performance.now() - this.artStart) / 1000;
+    if (this.artDone === g.result && t > RESULT_ART_DURATION) return;
+    drawResultArt(el, g, t);
+    this.artDone = t > RESULT_ART_DURATION ? g.result : null;
   }
 
   /**
@@ -336,7 +361,7 @@ export class Hud {
     const r = g.result;
     const rows = r.rows
       .map((row) => {
-        const tag = row.status === 'burned' ? '<em>BURNED</em>' : row.status === 'out' ? '<em>이탈</em>' : '';
+        const tag = row.status === 'burned' ? '<em>BURNED</em>' : ''; // 레인·얼굴 밖은 글자 없이 0점만
         const hue = Math.round((row.score / 100) * 120); // 0 빨강 → 120 초록
         return `<div class="row"><img src="${this.thumbs.get(row.id)}" alt="" /><span>${row.label}</span>
           <div class="bar"><b style="width:${row.score}%;background:hsl(${hue} 75% 50%)"></b>${tag}</div>

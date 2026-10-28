@@ -194,7 +194,6 @@ export class Renderer {
     const fp = game.face?.parts ?? {};
     // 스톤 윗면: 사진 부위는 스티커 그대로, 기본 얼굴은 부위 색 도형
     this.topTextures = new Map(game.parts.map((p) => [p.id, fp[p.id]?.outline ? canvasTexture(fp[p.id].canvas) : shapeTexture(p)]));
-    this.buildResultStickers(game);
     this.buildThrowFeedback(game);
     this.buildCharacter();
     this.buildSweepFeedback(game);
@@ -305,31 +304,6 @@ export class Renderer {
     this.dbgZone.add(zone);
     this.sensors.add(this.dbgBody, this.dbgBroom, this.dbgContact, this.dbgZone);
     this.scene.add(this.sensors);
-  }
-
-  /**
-   * 결과 화면: 퍽을 감추고 실제 크기 부위 스티커를 최종 위치에 붙인다 (명세 3.10).
-   * 스티커 중심과 채점 기준점(마스크 무게중심)의 차이 = visualOffset (명세 6.2)
-   */
-  buildResultStickers(game) {
-    this.resultStickers = new Map();
-    if (!game.face) return;
-    const B = game.cfg.boardSize;
-    for (const [id, p] of Object.entries(game.face.parts)) {
-      const geo = new THREE.PlaneGeometry(1, 1);
-      geo.rotateX(-Math.PI / 2);
-      // 조명을 받는 보통 재질 — 빛나 보이지 않고 보드 사진과 같은 밝기
-      const m = new THREE.Mesh(geo, new THREE.MeshStandardMaterial({ map: canvasTexture(p.canvas), transparent: true, depthWrite: false, roughness: 0.6 }));
-      m.visible = false;
-      m.userData = {
-        w: p.rect.w * B,
-        h: p.rect.h * B,
-        dx: (p.rect.x + p.rect.w / 2 - p.anchor.x) * B,
-        dy: -(p.rect.y + p.rect.h / 2 - p.anchor.y) * B,
-      };
-      this.scene.add(m);
-      this.resultStickers.set(id, m);
-    }
   }
 
   /**
@@ -478,28 +452,8 @@ export class Renderer {
       }
       m.position.copy(V(lerp(s.prevX, s.x, alpha), lerp(s.prevY, s.y, alpha)));
       m.rotation.y = lerpAngle(s.prevAngle ?? s.angle, s.angle, alpha); // 월드 반시계 + = three Y축 +
-      // 결과: 퍽 대신 스티커가 차례로 '착' 붙는다
-      const sticker = this.resultStickers.get(s.id);
-      const showSticker = !!sticker && game.state === 'RESULT';
-      m.visible = !showSticker;
-      if (sticker) {
-        sticker.visible = showSticker;
-        if (showSticker) {
-          const order = game.parts.findIndex((p) => p.id === s.id);
-          const t = Math.min(1, Math.max(0, (this.time - (this.resultAt ?? 0) - order * 0.15) / 0.25));
-          const pop = t < 1 ? 1.25 - 0.25 * t : 1;
-          const u = sticker.userData;
-          const k = game.parts.find((p) => p.id === s.id).scale;
-          const c = Math.cos(s.angle);
-          const sn = Math.sin(s.angle);
-          sticker.position.copy(V(s.x + (u.dx * c - u.dy * sn) * k, s.y + (u.dx * sn + u.dy * c) * k, 0.02 + order * 0.002));
-          sticker.rotation.y = s.angle;
-          sticker.scale.set(u.w * k * pop * t, 1, u.h * k * pop * t);
-        }
-      }
+      m.visible = game.state !== 'RESULT'; // 결과는 2D 그림(ui/resultArt.js)으로 보여 준다
     }
-    if (game.state === 'RESULT' && this.lastState !== 'RESULT') this.resultAt = this.time;
-    this.lastState = game.state;
     for (const [id, m] of this.stoneMeshes) {
       if (!seen.has(id)) {
         this.scene.remove(m);
