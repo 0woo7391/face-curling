@@ -12,19 +12,11 @@
     <div id="app"></div>
     <div id="loading">물리 엔진 불러오는 중…</div>
     <div id="hud">
+      <!-- 플레이 중 상단: 일시정지 + 6개 부위 진행 칸. 나머지 기능은 홈·일시정지 메뉴로 -->
       <header id="topbar">
-        <strong>FACE CURLING</strong>
-        <span id="status"></span>
-        <span class="spacer"></span>
-        <select id="mode" aria-label="모드">
-          <option value="record">기록</option>
-          <option value="practice">연습</option>
-        </select>
-        <button id="face-btn" aria-label="내 사진으로 얼굴 만들기">📷</button>
-        <button id="restart" aria-label="재시작">↺</button>
-        <button id="mute" aria-label="소리">🔊</button>
-        <button id="help-btn" aria-label="조작법">?</button>
-        <button id="tune" aria-label="튜닝">⚙</button>
+        <button id="pause-btn" aria-label="일시정지">⏸</button>
+        <div id="progress" aria-label="부위 진행"></div>
+        <span id="mode-badge" hidden>연습</span>
       </header>
 
       <aside id="parts"></aside>
@@ -50,6 +42,40 @@
       <div id="stamp">BURNED</div>
       <div id="lock-overlay" hidden><div>🖱 클릭하면 조작 시작<small>Esc 해제</small></div></div>
       <section id="result" hidden></section>
+
+      <!-- 홈: 첫 화면. 뒤로 현재 얼굴 보드가 보인다 -->
+      <section id="home">
+        <h1 class="home-logo"><span>FACE</span><span>CURLING</span></h1>
+        <div class="home-panel">
+          <div class="face-card" id="face-card">
+            <canvas id="face-thumb" width="128" height="128" aria-hidden="true"></canvas>
+            <div class="face-text"><strong id="face-title"></strong><small id="face-sub"></small></div>
+            <button id="home-face"></button>
+          </div>
+          <button id="home-start" class="primary big">시작</button>
+          <div class="home-row">
+            <button id="home-practice">연습</button>
+            <button id="home-help">조작법</button>
+          </div>
+          <div class="home-foot">
+            <button id="home-sound" aria-label="소리">🔊</button>
+            <button id="home-tune" aria-label="튜닝">⚙</button>
+          </div>
+        </div>
+      </section>
+
+      <!-- 일시정지 -->
+      <section id="pause" hidden>
+        <h2>일시정지</h2>
+        <button id="p-resume" class="primary big">계속하기</button>
+        <button id="p-restart">처음부터 다시</button>
+        <button id="p-home">홈으로</button>
+        <div class="p-row">
+          <button id="p-sound">🔊 소리</button>
+          <button id="p-help">조작법</button>
+          <button id="p-tune">⚙ 튜닝</button>
+        </div>
+      </section>
 
       <section id="maker" hidden></section>
       <section id="help">

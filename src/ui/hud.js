@@ -1,11 +1,14 @@
-// DOM HUD. 글자는 최소로: 단계 칩, 다음 입력 표시(마우스 버튼 / 스와이프 화살표), 짧은 힌트 한 줄.
-// 나머지 피드백은 화면 속(렌더러)과 소리로 전달한다.
+// DOM HUD. 화면 구조:
+//   홈(#home)  → 시작/연습 → 게임(상단: ⏸ + 부위 진행 칸, 하단: 단계·힌트·버튼) → 결과(하단 시트)
+//   게임 중 ⏸ → 일시정지(#pause): 계속 / 처음부터 / 홈 / 소리 / 조작법 / 튜닝
+// 글자는 최소로. 되돌릴 수 없는 행동(처음부터·홈)은 진행 중일 때 두 번 눌러 확인한다.
 // 상태가 바뀔 때만 DOM을 다시 쓰도록 값을 캐시한다.
 import { partError, partScore } from '../core/scoring.js';
 
 const $ = (id) => document.getElementById(id);
 const STEPS = ['AIM', 'SPIN', 'POWER'];
 const LEARN_STROKES = 3; // 유효 스트로크를 이만큼 하면 스위핑 힌트를 숨긴다
+const CONFIRM_MS = 2500;
 
 export class Hud {
   constructor(game, actions) {
@@ -13,33 +16,90 @@ export class Hud {
     this.actions = actions;
     this.cache = {};
     this.partButtons = new Map();
+    this.slots = new Map();
     this.learned = 0;
+    this.confirming = null;
 
-    $('mode').addEventListener('change', (e) => actions.setMode(e.target.value));
-    $('restart').addEventListener('click', () => actions.restart());
-    $('mute').addEventListener('click', () => actions.toggleMute());
-    $('face-btn').addEventListener('click', () => actions.openMaker());
-    $('tune').addEventListener('click', () => actions.toggleTuning());
-    $('back').addEventListener('click', () => game.back());
-    $('next').addEventListener('click', () => game.next());
-    $('undo').addEventListener('click', () => game.undoLastThrow());
-    $('help-btn').addEventListener('click', () => $('help').classList.toggle('open'));
+    const on = (id, fn) => $(id).addEventListener('click', fn);
+    // 게임
+    on('pause-btn', () => actions.pause());
+    on('back', () => game.back());
+    on('next', () => game.next());
+    on('undo', () => game.undoLastThrow());
+    // 홈
+    on('home-start', () => actions.start('record'));
+    on('home-practice', () => actions.start('practice'));
+    on('home-face', () => actions.openMaker());
+    on('home-help', () => this.toggleHelp());
+    on('home-sound', () => actions.toggleMute());
+    on('home-tune', () => actions.toggleTuning());
+    // 일시정지
+    on('p-resume', () => actions.resume());
+    on('p-restart', () => this.confirm('p-restart', '정말 처음부터? 한 번 더', () => actions.restartGame()));
+    on('p-home', () => this.confirm('p-home', '진행 중인 게임을 그만둘까요? 한 번 더', () => actions.goHome()));
+    on('p-sound', () => actions.toggleMute());
+    on('p-help', () => this.toggleHelp());
+    on('p-tune', () => actions.toggleTuning());
     $('help').addEventListener('click', () => $('help').classList.remove('open'));
     this.buildParts();
   }
 
+  toggleHelp() {
+    $('help').classList.toggle('open');
+  }
+
+  /** 진행 중인 게임이 있으면 두 번 눌러야 실행 */
+  confirm(id, label, fn) {
+    const inProgress = this.game.throwIndex > 0 && this.game.state !== 'RESULT';
+    if (!inProgress || this.confirming === id) {
+      this.resetConfirm();
+      fn();
+      return;
+    }
+    this.resetConfirm();
+    this.confirming = id;
+    const b = $(id);
+    b.dataset.label = b.textContent;
+    b.textContent = label;
+    b.classList.add('danger');
+    this.confirmTimer = setTimeout(() => this.resetConfirm(), CONFIRM_MS);
+  }
+
+  resetConfirm() {
+    clearTimeout(this.confirmTimer);
+    if (!this.confirming) return;
+    const b = $(this.confirming);
+    b.textContent = b.dataset.label;
+    b.classList.remove('danger');
+    this.confirming = null;
+  }
+
+  /** 부위 버튼과 상단 진행 칸. 사진 얼굴이면 부위 스티커 그림을 쓴다 */
   buildParts() {
     const box = $('parts');
+    const bar = $('progress');
     box.innerHTML = '';
+    bar.innerHTML = '';
     this.partButtons.clear();
+    this.slots.clear();
     this.cache = {};
+    const fp = this.game.face?.parts ?? {};
     for (const p of this.game.parts) {
+      const thumb = fp[p.id] ? `<img src="${fp[p.id].canvas.toDataURL()}" alt="" />` : `<i style="background:${p.color}"></i>`;
       const b = document.createElement('button');
       b.className = 'part';
-      b.innerHTML = `<i style="background:${p.color}"></i><span class="name">${p.label}</span><span class="sc"></span>`;
+      b.innerHTML = `${thumb}<span class="name">${p.label}</span><span class="sc"></span>`;
       b.addEventListener('click', () => this.game.selectPart(p.id));
       box.appendChild(b);
       this.partButtons.set(p.id, b);
+
+      const s = document.createElement('span');
+      s.className = 'slot';
+      s.style.setProperty('--c', p.color);
+      s.title = p.label;
+      s.innerHTML = `${fp[p.id] ? `<img src="${fp[p.id].canvas.toDataURL()}" alt="" />` : ''}<b></b>`;
+      bar.appendChild(s);
+      this.slots.set(p.id, s);
     }
   }
 
@@ -70,28 +130,40 @@ export class Hud {
     }
   }
 
-  update(input, renderer, muted) {
+  /** @param app {screen:'home'|'game', paused, muted} */
+  update(input, renderer, app) {
     const g = this.game;
     const st = g.state;
     const touch = input.touchMode;
     const hud = $('hud');
+    hud.dataset.screen = app.screen;
     hud.dataset.state = st;
     hud.dataset.input = touch ? 'touch' : 'mouse';
+    $('pause').hidden = !app.paused;
+    hud.dataset.paused = app.paused ? '1' : '';
+    if (!app.paused) this.resetConfirm();
 
-    this.set('status', $('status'), `${g.mode === 'record' ? '기록' : '연습'} · ${g.throwIndex}/6`);
-    this.set('modeSel', $('mode'), g.mode, 'value');
-    this.set('mute', $('mute'), muted ? '🔇' : '🔊');
+    const sound = app.muted ? '🔇' : '🔊';
+    this.set('hs', $('home-sound'), sound);
+    this.set('ps', $('p-sound'), `${sound} 소리`);
+    if (app.screen === 'home') this.updateHome();
+    $('mode-badge').hidden = g.mode !== 'practice';
 
-    // 부위: 색 점 + 이름 + 점수(던진 뒤). 번드·이탈은 빨간 0
+    // 부위 버튼 + 진행 칸: 던진 부위는 점수, 번드·이탈은 빨간 ✕
     for (const p of g.parts) {
-      const b = this.partButtons.get(p.id);
       const s = g.sim.stones.get(p.id);
       const score = s && p.status !== 'pending' ? partScore(partError(s, p.q, g.board, g.faceDiagonal), g.cfg.allowedError) : null;
-      const sc = p.status === 'burned' || p.status === 'out' ? '0' : score == null ? '' : score.toFixed(0);
+      const lost = p.status === 'burned' || p.status === 'out';
+      const sc = lost ? '0' : score == null ? '' : score.toFixed(0);
+      const b = this.partButtons.get(p.id);
       this.set(`pc-${p.id}`, b.querySelector('.sc'), sc);
       this.set(`pd-${p.id}`, b, !(st === 'PART_SELECT' && p.status === 'pending'), 'disabled');
-      b.classList.toggle('current', p.id === g.currentPartId);
       b.dataset.status = p.status;
+      const slot = this.slots.get(p.id);
+      slot.dataset.status = p.status;
+      slot.classList.toggle('current', p.id === g.currentPartId);
+      this.set(`sl-${p.id}`, slot.querySelector('b'), lost ? '✕' : sc);
+      if (score != null && !lost) slot.style.setProperty('--score', `hsl(${Math.round((score / 100) * 120)} 75% 45%)`);
     }
 
     // 투구 단계 칩
@@ -106,34 +178,68 @@ export class Hud {
     $('back').hidden = stepIdx < 0;
     $('next').hidden = !(st === 'AIM' || st === 'SPIN');
     this.set('backLabel', $('back'), st === 'POWER' ? '✕' : '◀');
-    $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && (st === 'PART_SELECT' || st === 'RESULT'));
+    $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && st === 'PART_SELECT');
 
     // 다음 입력: 마우스는 버튼 그림, 터치는 스와이프 판의 화살표가 밝아진다
-    const sweeping = st === 'SWEEP';
-    $('next-key').hidden = !sweeping || touch;
+    $('next-key').hidden = st !== 'SWEEP' || touch;
     $('next-key').dataset.expect = g.sweep.expect;
     $('touch-swipe').dataset.expect = g.sweep.expect;
 
-    $('minimap-frame').style.visibility = renderer.minimapVisible ? 'visible' : 'hidden';
+    $('minimap-frame').style.visibility = renderer.minimapVisible && app.screen === 'game' ? 'visible' : 'hidden';
     $('lock-overlay').hidden = !input.needsLock;
     this.updateOffscreen(renderer);
     this.updateResult();
   }
 
+  /** 홈의 얼굴 카드: 사진 얼굴이 없으면 만들기를 권한다 (명세 3.1: 첫 실행은 얼굴 만들기가 주 행동) */
+  updateHome() {
+    const face = this.game.face ?? null;
+    if ('homeFace' in this.cache && this.cache.homeFace === face) return;
+    this.cache.homeFace = face;
+    $('face-card').classList.toggle('empty', !face);
+    $('face-title').textContent = face ? '내가 만든 얼굴' : '기본 얼굴';
+    $('face-sub').textContent = face ? '이 얼굴로 플레이해요' : '친구 사진으로 만들면 훨씬 웃겨요';
+    $('home-face').textContent = face ? '바꾸기' : '📷 만들기';
+    $('home-face').classList.toggle('primary', !face);
+    const c = $('face-thumb');
+    const g = c.getContext('2d');
+    g.clearRect(0, 0, c.width, c.height);
+    if (face) {
+      g.drawImage(face.crop, 0, 0, c.width, c.height);
+    } else {
+      g.fillStyle = '#efc7a2';
+      g.beginPath();
+      g.ellipse(64, 70, 38, 48, 0, 0, Math.PI * 2);
+      g.fill();
+      g.fillStyle = '#4e342e';
+      g.beginPath();
+      g.ellipse(64, 46, 40, 26, 0, Math.PI, Math.PI * 2);
+      g.fill();
+      g.font = '28px system-ui';
+      g.textAlign = 'center';
+      g.fillText('?', 64, 82);
+    }
+  }
+
   /**
    * HUD가 화면 가장자리에서 차지하는 폭. 렌더러는 이 안쪽 영역 가운데에 장면을 놓는다.
-   * - 아래: 가운데 세로띠에 걸친 아래쪽 요소(단계·힌트·버튼·다음 입력·세로 화면의 부위 목록·결과 시트)
-   * - 좌/우: 키 큰 옆 패널(가로 화면의 결과·부위 목록)
+   * - 위: 상단 막대(게임) 또는 로고(홈)
+   * - 아래: 가운데 세로띠에 걸친 아래쪽 요소(단계·힌트·버튼·다음 입력·부위 목록·결과·홈 패널·일시정지)
    */
   insets() {
     const S = $('stage').getBoundingClientRect();
     const W = S.width;
     const H = S.height;
-    const top = $('topbar').getBoundingClientRect().bottom - S.top;
+    let top = 0;
+    for (const id of ['topbar', 'home-logo-anchor']) {
+      const el = id === 'home-logo-anchor' ? document.querySelector('#home .home-logo') : $(id);
+      const b = el?.getBoundingClientRect();
+      if (b && b.height > 0) top = Math.max(top, b.bottom - S.top);
+    }
     let bottomEdge = H;
     let left = 0;
     let right = 0;
-    for (const id of ['steps', 'hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result']) {
+    for (const id of ['steps', 'hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result', 'pause']) {
       const el = $(id);
       const b = el.getBoundingClientRect();
       if (b.height === 0 || (id === 'hint' && !el.textContent)) continue;
@@ -145,13 +251,15 @@ export class Hud {
         else if (r.left > W * 0.4) right = Math.max(right, W - r.left);
       }
     }
+    const panel = document.querySelector('#home .home-panel').getBoundingClientRect();
+    if (panel.height > 0) bottomEdge = Math.min(bottomEdge, panel.top - S.top);
     return { top, bottom: H - bottomEdge, left, right };
   }
 
   hint(touch) {
     switch (this.game.state) {
       case 'PART_SELECT':
-        return this.game.face ? '던질 부위를 고르세요' : '던질 부위를 고르세요 · 📷 내 사진으로 얼굴 만들기';
+        return '던질 부위를 고르세요';
       case 'AIM':
         return touch ? '레인을 끌어서 방향' : '레인을 드래그해서 방향';
       case 'SPIN':
@@ -201,8 +309,10 @@ export class Hud {
           <strong>${row.score.toFixed(0)}</strong></div>`;
       })
       .join('');
-    box.innerHTML = `<p class="big"><b>${r.mean.toFixed(0)}</b><small>점</small></p>${rows}
-      <div class="actions"><button id="again">다시 하기</button></div>`;
-    box.querySelector('#again').addEventListener('click', () => this.actions.restart());
+    box.innerHTML = `<p class="big"><b>${r.mean.toFixed(0)}</b><small>점</small>${g.mode === 'practice' ? '<span class="badge">연습</span>' : ''}</p>${rows}
+      <div class="actions">${g.mode === 'practice' && g.checkpoint ? '<button id="r-undo">↶ 마지막 투구 다시</button>' : ''}<button id="r-home">홈</button><button id="r-again" class="primary">다시 하기</button></div>`;
+    box.querySelector('#r-again').addEventListener('click', () => this.actions.restartGame());
+    box.querySelector('#r-home').addEventListener('click', () => this.actions.goHome());
+    box.querySelector('#r-undo')?.addEventListener('click', () => g.undoLastThrow());
   }
 }

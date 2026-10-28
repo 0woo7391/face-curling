@@ -17,6 +17,7 @@ export class TouchInput {
     this.joy = null;
     this.swipe = null;
     this.detector = new SwipeStrokeDetector(SWIPE_THRESHOLD);
+    this.suspended = false; // 홈·일시정지 중
     canvas.addEventListener('pointerdown', (e) => this.down(e));
     canvas.addEventListener('pointermove', (e) => this.move(e));
     canvas.addEventListener('pointerup', (e) => this.up(e));
@@ -25,7 +26,7 @@ export class TouchInput {
   }
 
   get sweeping() {
-    return SWEEP_STATES.has(this.game.state);
+    return !this.suspended && SWEEP_STATES.has(this.game.state);
   }
 
   down(e) {

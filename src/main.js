@@ -28,16 +28,39 @@ async function main() {
   renderer.minimapEl = document.getElementById('minimap-frame');
   const sound = new Sound();
 
+  // 앱 화면: 홈 → 게임. 게임 중 일시정지
+  const app = { screen: 'home', paused: false, get muted() { return sound.muted; } };
+
   const actions = {
+    /** 장면을 현재 게임 상태로 다시 구성 */
     restart() {
       game.restart();
       renderer.build(game);
       hud.buildParts();
       debug.updateLayout(game);
     },
-    setMode(mode) {
+    start(mode) {
       game.mode = mode;
       actions.restart();
+      app.screen = 'game';
+      app.paused = false;
+    },
+    restartGame() {
+      actions.restart();
+      app.paused = false;
+    },
+    goHome() {
+      actions.restart();
+      app.screen = 'home';
+      app.paused = false;
+    },
+    pause() {
+      if (app.screen !== 'game') return;
+      app.paused = true;
+      if (document.pointerLockElement) document.exitPointerLock();
+    },
+    resume() {
+      app.paused = false;
     },
     toggleMute() {
       sound.setMuted(!sound.muted);
@@ -92,6 +115,11 @@ async function main() {
 
   window.addEventListener('keydown', (e) => {
     if (e.code === 'KeyT') renderer.options.laneTop = !renderer.options.laneTop;
+    // Esc는 마우스 잠금 중이면 브라우저가 잠금 해제에 쓴다. 잠금이 없을 때만 일시정지
+    if ((e.code === 'Escape' && !document.pointerLockElement) || e.code === 'KeyP') {
+      if (app.paused) actions.resume();
+      else actions.pause();
+    }
   });
 
   let stepper = new FixedStepper(cfg.tickRate);
@@ -101,7 +129,9 @@ async function main() {
     last = now;
     if (stepper.dt !== 1 / cfg.tickRate) stepper = new FixedStepper(cfg.tickRate);
     const ticks = stepper.advance(dt);
-    if (!debugHooks.paused) for (let i = 0; i < ticks; i++) game.tick();
+    const running = app.screen === 'game' && !app.paused && !debugHooks.paused;
+    if (running) for (let i = 0; i < ticks; i++) game.tick();
+    input.suspended = touch.suspended = !running; // 일시정지·홈에서는 마우스 잠금 안내·스위핑 입력을 받지 않는다
     input.update();
     touch.update();
 
@@ -114,7 +144,7 @@ async function main() {
     sound.update(game);
 
     renderer.fallback = input.fallback;
-    hud.update(input, renderer, sound.muted);
+    hud.update(input, renderer, app);
     renderer.setInsets(hud.insets());
     renderer.render(game, stepper.alpha, Math.min(dt, 0.1));
     debug.update(game);
@@ -124,7 +154,7 @@ async function main() {
   document.getElementById('loading').remove();
   // 브라우저 콘솔·자동 테스트용. paused=true면 루프가 틱을 진행하지 않는다 (렌더는 계속)
   window.__game = game;
-  window.__debug = Object.assign(debugHooks, { renderer, input, saveFace, loadFace });
+  window.__debug = Object.assign(debugHooks, { renderer, input, saveFace, loadFace, app, actions });
 }
 
 /** Android만 지원 (iOS Safari는 navigator.vibrate 없음) */

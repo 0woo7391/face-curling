@@ -6,7 +6,7 @@ const VIEWS = [
   { name: 'phone-390x664', w: 390, h: 664, touch: true, dpr: 3 },
   { name: 'tablet-768x1024', w: 768, h: 1024, touch: true, dpr: 2 },
 ];
-const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls', '#next-key', '#minimap-frame', '#touch-swipe', '#result', '#offscreen'];
+const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls', '#next-key', '#minimap-frame', '#touch-swipe', '#result', '#offscreen'];
 
 (async () => {
   const browser = await chromium.launch();
@@ -21,7 +21,8 @@ const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls
     await page.evaluate((touch) => { window.__debug.paused = true; if (touch) window.__debug.input.pointerType = 'touch'; }, v.touch);
 
     const steps = [
-      ['PART_SELECT', () => {}],
+      ['HOME', () => {}],
+      ['PART_SELECT', () => { window.__debug.actions.start('record'); window.__debug.paused = true; }],
       ['AIM', () => { window.__game.selectPart('nose'); }],
       ['SPIN', () => { window.__game.next(); window.__game.setSpin(0.6); }],
       ['POWER', () => { window.__game.next(); window.__game.setPower(0.9); }],
@@ -36,7 +37,9 @@ const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls
           g.tick();
         }
       }],
+      ['PAUSE', () => { window.__debug.actions.pause(); }],
       ['RESULT', () => {
+        window.__debug.actions.resume();
         const g = window.__game;
         for (let i = 0; i < 4000 && g.state !== 'PART_SELECT'; i++) g.tick();
         for (const id of ['left_brow', 'right_brow', 'left_eye', 'right_eye', 'mouth']) {
@@ -47,7 +50,7 @@ const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls
     ];
     for (const [label, fn] of steps) {
       await page.evaluate(fn);
-      await page.waitForTimeout(label === 'PART_SELECT' || label === 'RESULT' ? 2500 : 1500); // 카메라 이동 대기
+      await page.waitForTimeout(['HOME', 'PART_SELECT', 'RESULT'].includes(label) ? 2500 : 1500); // 카메라 이동 대기
       const rep = await page.evaluate(([HUD, label]) => {
         const g = window.__game, r = window.__debug.renderer;
         const vis = [];
@@ -74,12 +77,12 @@ const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls
           const pw = label === 'POWER' ? g.power * 0.9 : 0;
           pts.push(['스톤', 0, -pw]);
         }
-        if (label === 'SWEEP') {
+        if (label === 'SWEEP' || label === 'PAUSE') {
           const s = g.currentStone; if (s) pts.push(['스톤', s.x, s.y]);
           pts.push(['캐릭터', g.character.pos.x, g.character.pos.y]);
           pts.push(['빗자루', g.broom.x, g.broom.y]);
         }
-        if (label === 'PART_SELECT' || label === 'RESULT') {
+        if (label === 'HOME' || label === 'PART_SELECT' || label === 'RESULT') {
           for (const q of [[0.2, 0.17], [0.8, 0.17], [0.2, 0.9], [0.8, 0.9], [0.5, 0.5]]) {
             const w = g.board.qToWorld({ x: q[0], y: q[1] }); pts.push([`얼굴(${q})`, w.x, w.y]);
           }

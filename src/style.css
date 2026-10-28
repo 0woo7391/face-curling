@@ -34,7 +34,7 @@ html, body {
 #app canvas { display: block; touch-action: none; }
 #loading { display: grid; place-items: center; font-size: 18px; }
 #hud { pointer-events: none; }
-#hud button, #hud select, #result, #help, #parts, #maker { pointer-events: auto; }
+#hud button, #hud select, #result, #help, #parts, #maker, #pause { pointer-events: auto; }
 
 /* 폰을 가로로 들었을 때 */
 #rotate { display: none; }
@@ -52,16 +52,33 @@ button:disabled { cursor: default; opacity: 0.5; }
 button.primary { background: var(--sticker); color: var(--ink); border-color: var(--sticker); }
 kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius: 4px; padding: 0 5px; font-size: 12px; }
 
-/* ── 상단 ── */
+/* ── 화면 전환: 홈에서는 게임 HUD를 숨기고, 게임에서는 홈을 숨긴다 ── */
+#hud[data-screen="home"] :is(#topbar, #bottom, #parts, #next-key, #touch-swipe, #offscreen, #lock-overlay, #result) { display: none !important; }
+#hud:not([data-screen="home"]) #home { display: none; }
+/* 일시정지 중에는 아래쪽 게임 조작을 감춰 메뉴와 겹치지 않게 */
+#hud[data-paused="1"] :is(#bottom, #next-key, #touch-swipe, #parts, #result, #lock-overlay) { display: none !important; }
+
+/* ── 상단 (게임): ⏸ + 부위 진행 칸 ── */
 #topbar {
-  position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 6px; align-items: center;
-  padding: calc(6px + env(safe-area-inset-top)) 8px 6px 10px; background: linear-gradient(var(--panel), transparent);
+  position: absolute; top: 0; left: 0; right: 0; display: flex; gap: 8px; align-items: center;
+  padding: calc(6px + env(safe-area-inset-top)) 10px 6px; background: linear-gradient(var(--panel), transparent);
 }
-#topbar strong { display: none; }
-#topbar .spacer { flex: 1; }
-#topbar button { width: 38px; padding: 4px 0; font-size: 14px; }
-#topbar select { padding: 4px 6px; font-size: 14px; }
-#status { color: var(--muted); font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+#pause-btn { width: 44px; height: 44px; padding: 0; font-size: 18px; flex: none; }
+#progress { display: flex; gap: 5px; flex: 1; justify-content: center; }
+.slot {
+  position: relative; width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; overflow: hidden;
+  background: var(--chip); border: 3px solid var(--c); font-size: 11px; font-weight: 900; font-variant-numeric: tabular-nums;
+}
+.slot img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #fff; }
+.slot b { position: relative; color: #fff; text-shadow: 0 1px 2px #000, 0 0 4px #000; }
+.slot[data-status="pending"] { opacity: 0.55; }
+.slot[data-status="pending"] img { filter: grayscale(1); }
+.slot.current { opacity: 1; box-shadow: 0 0 0 3px var(--sticker); animation: bob 1.2s ease-in-out infinite; }
+.slot[data-status="stopped"], .slot[data-status="moving"] { border-color: var(--score, var(--c)); }
+.slot[data-status="burned"], .slot[data-status="out"] { border-color: var(--danger); }
+.slot[data-status="burned"] b, .slot[data-status="out"] b { color: var(--danger); font-size: 16px; }
+#mode-badge { flex: none; padding: 2px 8px; border-radius: 999px; background: var(--caution); color: var(--ink); font-size: 12px; font-weight: 900; }
+#mode-badge[hidden] { display: none; }
 
 /* ── 부위 스티커: 하단 3×2 (부위 선택 때만) ── */
 #parts {
@@ -74,6 +91,8 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
   background: var(--sticker); color: var(--ink); border: 3px solid var(--sticker); border-radius: 14px; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35);
 }
 .part i { width: 10px; height: 10px; border-radius: 50%; }
+.part img { width: 28px; height: 22px; object-fit: contain; grid-row: span 1; }
+.part:has(img) { grid-template-columns: 28px 1fr auto; }
 .part .sc { font-variant-numeric: tabular-nums; font-weight: 800; }
 .part.current { border-color: var(--accent); }
 .part:disabled { opacity: 0.55; }
@@ -110,7 +129,7 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 @keyframes shake { 20%, 60% { transform: translateX(calc(-50% - 6px)); } 40%, 80% { transform: translateX(calc(-50% + 6px)); } }
 
 /* ── 미니맵 ── */
-#minimap-frame { position: absolute; right: 8px; top: calc(56px + env(safe-area-inset-top)); width: 112px; height: 112px; border: 3px solid var(--sticker); border-radius: 10px; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
+#minimap-frame { position: absolute; right: 8px; top: calc(62px + env(safe-area-inset-top)); width: 112px; height: 112px; border: 3px solid var(--sticker); border-radius: 10px; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
 
 #offscreen { position: absolute; transform: translate(-50%, -50%); padding: 3px 10px; border-radius: 999px; background: #00838f; font-size: 13px; font-weight: 800; white-space: nowrap; }
 #offscreen[hidden] { display: none; }
@@ -131,7 +150,7 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 }
 
 /* 마우스 잠금 안내: 플레이 화면을 가리지 않게 위쪽 작은 알림 */
-#lock-overlay { position: absolute; left: 10px; top: calc(56px + env(safe-area-inset-top)); animation: bob 1.4s ease-in-out infinite; }
+#lock-overlay { position: absolute; left: 10px; top: calc(62px + env(safe-area-inset-top)); animation: bob 1.4s ease-in-out infinite; }
 #lock-overlay > div { background: var(--sticker); color: var(--ink); padding: 6px 14px; border-radius: 999px; font-size: 13px; font-weight: 800; white-space: nowrap; box-shadow: 0 3px 0 rgba(0, 0, 0, 0.35); }
 #lock-overlay small { margin-left: 6px; font-size: 11px; font-weight: 500; color: #4a5a6e; }
 #lock-overlay[hidden], #result[hidden] { display: none; }
@@ -149,17 +168,18 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #result .bar { position: relative; height: 14px; border-radius: 7px; background: var(--chip); overflow: hidden; }
 #result .bar b { display: block; height: 100%; border-radius: 7px; }
 #result .bar em { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-style: normal; font-weight: 900; color: var(--danger); }
-#result .actions { display: flex; justify-content: flex-end; margin-top: 4px; }
-#result .actions button { background: var(--sticker); color: var(--ink); border-color: var(--sticker); padding: 10px 20px; }
+#result .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
+#result .actions button { padding: 10px 16px; }
+#result .badge { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--caution); color: var(--ink); font-size: 12px; font-weight: 900; vertical-align: middle; }
 
-#help { display: none; position: absolute; left: 12px; right: 12px; top: 50%; transform: translateY(-50%); background: var(--panel); border-radius: 16px; padding: 12px 18px; cursor: pointer; font-size: 13px; }
+#help { display: none; z-index: 20; position: absolute; left: 12px; right: 12px; top: 50%; transform: translateY(-50%); background: var(--panel); border-radius: 16px; padding: 12px 18px; cursor: pointer; font-size: 13px; }
 #help.open { display: block; }
 #help .g { color: var(--good); }
 #help .y { color: var(--caution); }
 #help .r { color: var(--danger); }
 
 /* 튜닝 패널: PC에서는 세로 화면 바깥 오른쪽, 폰에서는 상단 아래 */
-.lil-gui.lil-auto-place { top: calc(56px + env(safe-area-inset-top)); right: 8px; max-height: calc(100% - 150px); }
+.lil-gui.lil-auto-place { top: calc(60px + env(safe-area-inset-top)); right: 8px; max-height: calc(100% - 150px); }
 
 /* ── 터치 조작 ── */
 #touch-swipe { display: none; }
@@ -177,6 +197,42 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #touch-joy { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 3px solid rgba(255, 255, 255, 0.5); background: rgba(255, 255, 255, 0.08); }
 #touch-joy[hidden] { display: none; }
 #touch-knob { position: absolute; left: 29px; top: 29px; width: 48px; height: 48px; border-radius: 50%; background: rgba(0, 229, 255, 0.8); }
+
+/* ── 홈 ── */
+#home { position: absolute; inset: 0; display: flex; flex-direction: column; justify-content: space-between; pointer-events: none; }
+#home .home-logo {
+  margin: 0; padding: calc(18px + env(safe-area-inset-top)) 16px 0; display: flex; flex-direction: column; align-items: center; line-height: 0.95;
+  font-size: clamp(40px, 13vw, 58px); font-weight: 900; letter-spacing: 0.02em; transform: rotate(-4deg);
+}
+#home .home-logo span { padding: 2px 14px; background: var(--sticker); color: var(--ink); border-radius: 12px; box-shadow: 0 4px 0 rgba(0, 0, 0, 0.4); }
+#home .home-logo span + span { margin-top: 6px; background: var(--red); color: #fff; transform: rotate(3deg); }
+.home-panel {
+  pointer-events: auto; display: flex; flex-direction: column; gap: 10px;
+  margin: 0 10px calc(12px + env(safe-area-inset-bottom)); padding: 14px; border-radius: 22px; background: var(--panel);
+}
+.face-card { display: grid; grid-template-columns: 64px 1fr auto; gap: 12px; align-items: center; padding: 8px; border-radius: 16px; background: var(--chip); }
+.face-card canvas { width: 64px; height: 64px; border-radius: 12px; background: var(--bg); border: 3px solid var(--sticker); }
+.face-card.empty { box-shadow: 0 0 0 3px var(--caution); animation: bob 1.8s ease-in-out infinite; }
+.face-text { display: flex; flex-direction: column; min-width: 0; }
+.face-text small { color: var(--muted); font-size: 12px; }
+#home-face { padding: 10px 12px; }
+button.big { padding: 16px; font-size: 22px; border-radius: 16px; }
+.home-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.home-row button { padding: 12px; }
+.home-foot { display: flex; justify-content: flex-end; gap: 8px; }
+.home-foot button { width: 44px; height: 44px; padding: 0; }
+
+/* ── 일시정지 ── */
+#pause {
+  position: absolute; left: 10px; right: 10px; bottom: calc(10px + env(safe-area-inset-bottom)); z-index: 5;
+  display: flex; flex-direction: column; gap: 10px; padding: 16px; border-radius: 22px; background: var(--panel); backdrop-filter: blur(6px);
+}
+#pause[hidden] { display: none; }
+#pause h2 { margin: 0 0 2px; font-size: 18px; }
+#pause > button { padding: 12px; }
+#pause button.danger { background: var(--danger); border-color: var(--danger); color: #fff; }
+.p-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.p-row button { padding: 10px 4px; font-size: 14px; }
 
 /* ── 얼굴 만들기 ── */
 #maker {

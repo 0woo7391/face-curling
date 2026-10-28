@@ -18,6 +18,7 @@ export class MouseInput {
     this.lockErrors = 0;
     this.forceAbsolute = false;
     this.pointerType = 'mouse'; // 마지막 pointerdown의 종류 — 기기가 아니라 실제 입력으로 모드를 정한다
+    this.suspended = false; // 홈·일시정지 중
     this.unsupported = !('requestPointerLock' in canvas);
 
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
@@ -44,7 +45,7 @@ export class MouseInput {
   }
 
   get sweeping() {
-    return SWEEP_STATES.has(this.game.state);
+    return !this.suspended && SWEEP_STATES.has(this.game.state);
   }
 
   get needsLock() {
@@ -53,7 +54,7 @@ export class MouseInput {
 
   onPointerDown(e) {
     this.pointerType = e.pointerType;
-    if (!AIM_STATES.has(this.game.state) || e.button !== 0) return;
+    if (this.suspended || !AIM_STATES.has(this.game.state) || e.button !== 0) return;
     this.canvas.setPointerCapture(e.pointerId);
     const st = this.game.state;
     if (st === 'AIM') {
@@ -147,5 +148,6 @@ export class MouseInput {
   /** 매 프레임: 스위핑이 끝나면 잠금 해제 */
   update() {
     if (!this.sweeping && this.locked) document.exitPointerLock();
+    if (this.suspended) this.drag = null;
   }
 }
