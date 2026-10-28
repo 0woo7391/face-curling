@@ -164,7 +164,6 @@ kbd { background: var(--chip); border: 1px solid var(--chip-line); border-radius
 #result .row strong { text-align: right; font-variant-numeric: tabular-nums; }
 #result .bar { position: relative; height: 14px; border-radius: 7px; background: var(--chip); overflow: hidden; }
 #result .bar b { display: block; height: 100%; border-radius: 7px; }
-#result .bar em { position: absolute; inset: 0; display: grid; place-items: center; font-size: 10px; font-style: normal; font-weight: 900; color: var(--danger); }
 #result .actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 4px; }
 #result .actions button { padding: 10px 16px; }
 #result .badge { margin-left: 8px; padding: 2px 8px; border-radius: 999px; background: var(--caution); color: var(--ink); font-size: 12px; font-weight: 900; vertical-align: middle; }

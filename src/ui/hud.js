@@ -361,10 +361,9 @@ export class Hud {
     const r = g.result;
     const rows = r.rows
       .map((row) => {
-        const tag = row.status === 'burned' ? '<em>BURNED</em>' : ''; // 레인·얼굴 밖은 글자 없이 0점만
-        const hue = Math.round((row.score / 100) * 120); // 0 빨강 → 120 초록
+        const hue = Math.round((row.score / 100) * 120); // 0 빨강 → 120 초록. 번드·이탈·얼굴 밖도 글자 없이 0점만
         return `<div class="row"><img src="${this.thumbs.get(row.id)}" alt="" /><span>${row.label}</span>
-          <div class="bar"><b style="width:${row.score}%;background:hsl(${hue} 75% 50%)"></b>${tag}</div>
+          <div class="bar"><b style="width:${row.score}%;background:hsl(${hue} 75% 50%)"></b></div>
           <strong>${row.score.toFixed(0)}</strong></div>`;
       })
       .join('');
