@@ -75,8 +75,9 @@ export function alphaStats(alpha, w, h, threshold = 32) {
 /**
  * 빈 얼굴 채우기: 마스크(255 = 지울 곳) 안을 주변 픽셀로 채우는 다중 해상도 푸시-풀.
  * 평균색 + 전체 블러보다 주변 밝기 변화를 따라가지만, 결은 만들지 못하므로 약한 잡음을 더한다 (명세 3.4).
+ * @param source 채울 색을 가져와도 되는 픽셀 (0..255, 없으면 전부). 배경·머리카락을 빼야 채운 자리가 회색이 되지 않는다
  */
-export function inpaint(rgba, mask, w, h, { noise = 3, seed = 1 } = {}) {
+export function inpaint(rgba, mask, w, h, { noise = 3, seed = 1, source = null } = {}) {
   // 레벨 0: 알려진 픽셀(가중치 1)과 모르는 픽셀(0)
   const levels = [];
   let cw = w;
@@ -84,7 +85,7 @@ export function inpaint(rgba, mask, w, h, { noise = 3, seed = 1 } = {}) {
   let col = new Float32Array(w * h * 3);
   let wt = new Float32Array(w * h);
   for (let i = 0; i < w * h; i++) {
-    const k = 1 - mask[i] / 255;
+    const k = (1 - mask[i] / 255) * (source ? source[i] / 255 : 1);
     wt[i] = k;
     col[i * 3] = rgba[i * 4] * k;
     col[i * 3 + 1] = rgba[i * 4 + 1] * k;
@@ -159,7 +160,8 @@ export function inpaint(rgba, mask, w, h, { noise = 3, seed = 1 } = {}) {
             else b = v;
           }
         }
-        const a = Math.min(1, lwt[i]);
+        // 가장 거친 레벨(up 없음)은 섞을 아래 색이 없으므로 알려진 색을 그대로 쓴다 — 0(검정)과 섞으면 채운 자리가 어두워진다
+        const a = up ? Math.min(1, lwt[i]) : 1;
         const known = lwt[i] > 1e-6;
         const kr = known ? lc[i * 3] / lwt[i] : 0;
         const kg = known ? lc[i * 3 + 1] / lwt[i] : 0;

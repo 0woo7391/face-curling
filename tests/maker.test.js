@@ -96,4 +96,22 @@ describe('imageops', () => {
     expect(at(20, 16)).toBeGreaterThan(at(11, 16)); // 기울기 유지
     expect(at(2, 2)).toBe(rgba[(2 * W + 2) * 4]); // 마스크 밖은 그대로
   });
+
+  it('inpaint: 색을 가져올 픽셀(source)만 쓰고, 일부만 허용해도 채운 색이 어두워지지 않는다', () => {
+    // 왼쪽 절반 = 피부색, 오른쪽 절반 = 검은 머리카락. 가운데 구멍은 피부에서만 색을 가져와야 한다
+    const rgba = new Uint8ClampedArray(W * W * 4);
+    const source = new Uint8ClampedArray(W * W);
+    for (let y = 0; y < W; y++) for (let x = 0; x < W; x++) {
+      const skin = x < W / 2;
+      rgba.set(skin ? [220, 180, 160, 255] : [20, 20, 20, 255], (y * W + x) * 4);
+      source[y * W + x] = skin ? 255 : 0;
+    }
+    const mask = new Uint8ClampedArray(W * W);
+    for (let y = 12; y < 20; y++) for (let x = 12; x < 20; x++) mask[y * W + x] = 255;
+    const out = inpaint(rgba, mask, W, W, { noise: 0, source });
+    const at = (x, y, c) => out[(y * W + x) * 4 + c];
+    expect(at(16, 16, 0)).toBeGreaterThan(210);
+    expect(at(16, 16, 1)).toBeGreaterThan(170);
+    expect(at(16, 16, 2)).toBeGreaterThan(150);
+  });
 });

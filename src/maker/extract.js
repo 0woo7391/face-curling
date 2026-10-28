@@ -58,30 +58,127 @@ export function brush(alpha, size, x, y, radius, erase) {
 }
 
 /**
- * 빈 얼굴: 부위 마스크 합을 넓혀 딱 잘라 지우고 주변 피부로 채운 뒤, 더 넓은 범위를 강하게 흐린다.
+ * 빈 얼굴. 얼굴 만들기 마지막 단계에서 두 가지 중 고른다.
+ * - 'blur' 흐리게: 지우기 마스크(손 보정 포함)를 조금 넓혀 채우고, 그 둘레를 얼굴 윤곽 안에서만 흐린다.
+ *   흔적이 거의 안 남는 대신 가운데가 흐림 덩어리가 된다.
+ * - 'clean' 깔끔하게: 실제 부위 윤곽만(눈은 눈꺼풀 주름까지, 코는 콧대 그림자까지 조금 더) 지워 채우고 경계만 살짝 흐린다.
+ *   얼굴이 잘 남는 대신 지운 자리가 매끈한 패치로 보인다.
+ * 공통:
  * - 지우는 구멍은 경계가 딱딱해야 한다: 부드러운 경계면 속눈썹·눈썹 끝 어두운 픽셀이 채우기에 섞여 회색 얼룩이 된다.
- * - 바깥 띠까지 흐려야 눈가 주름·콧대 그림자 같은 남은 선이 사라지고 "지운 자리"가 확실히 보인다.
+ * - 채울 색은 얼굴 윤곽 안의 피부색 픽셀에서만 가져온다: 배경·머리카락·그림자가 섞이면 채운 자리가 회색이 된다.
+ * - 부위 밖의 아주 어두운 픽셀(앞머리 등)은 지우지도 흐리지도 않는다.
+ * - 볼에서 찾은 매끈한 피부 조각의 잔결을 채운 자리에 입혀 플라스틱처럼 보이지 않게 한다.
+ * @param opts {tight: 부위별 실제 윤곽 마스크, faceMask: 얼굴 윤곽 마스크, style: 'blur' | 'clean'}
  */
-export function makeEmptyFace(crop, masks) {
-  const size = crop.width;
-  const union = new Uint8ClampedArray(size * size);
-  for (const m of Object.values(masks)) for (let i = 0; i < union.length; i++) union[i] = Math.max(union[i], m[i]);
-  const hole = dilate(threshold(union, 16), size, size, Math.round(size * 0.02));
-  const g = crop.getContext('2d');
-  const img = g.getImageData(0, 0, size, size);
-  const filled = inpaint(img.data, hole, size, size, { noise: 0 });
-  // 흐림 띠: 구멍보다 넓게, 경계는 길게 풀어 준다
-  const zone = boxBlur(dilate(hole, size, size, Math.round(size * 0.03)), size, size, Math.round(size * 0.03));
-  const soft = blurRGB(filled, size, size, Math.round(size * 0.025));
-  const out = new Uint8ClampedArray(filled.length);
-  for (let i = 0; i < size * size; i++) {
-    const k = zone[i] / 255;
-    for (let c = 0; c < 3; c++) out[i * 4 + c] = filled[i * 4 + c] * (1 - k) + soft[i * 4 + c] * k;
-    out[i * 4 + 3] = 255;
+export function makeEmptyFace(crop, masks, { tight, faceMask, style = 'blur' }) {
+  const S = crop.width;
+  const px = (f) => Math.max(1, Math.round(S * f));
+  const src = crop.getContext('2d').getImageData(0, 0, S, S).data;
+  const lum = (i) => 0.299 * src[i * 4] + 0.587 * src[i * 4 + 1] + 0.114 * src[i * 4 + 2];
+
+  // 머리카락: 부위(눈동자·콧구멍·입술선 포함) 밖에서 이 사진의 피부보다 훨씬 어둡고(피부 평균 밝기의 절반 미만) 색이 옅은 픽셀
+  const partZone = dilate(unionOf(tight, S), S, S, px(0.02));
+  let skinSum = 0;
+  let skinN = 0;
+  for (let i = 0; i < S * S; i++) {
+    if (faceMask[i] > 128 && !partZone[i]) {
+      skinSum += lum(i);
+      skinN++;
+    }
   }
-  const c = canvas(size);
-  c.getContext('2d').putImageData(new ImageData(out, size, size), 0, 0);
+  const hairLum = skinN ? (skinSum / skinN) * 0.5 : 55;
+  const hairRaw = new Uint8ClampedArray(S * S);
+  // 채도도 낮아야 머리카락 (검정·회색). 피부 주름·그림자는 어두워도 색이 있다
+  const sat = (i) => {
+    const r = src[i * 4];
+    const g = src[i * 4 + 1];
+    const b = src[i * 4 + 2];
+    const mx = Math.max(r, g, b);
+    return mx ? (mx - Math.min(r, g, b)) / mx : 0;
+  };
+  for (let i = 0; i < S * S; i++) hairRaw[i] = lum(i) < hairLum && sat(i) < 0.35 && !partZone[i] ? 255 : 0;
+  const hair = boxBlur(hairRaw, S, S, 2);
+
+  const hole =
+    style === 'clean'
+      ? unionOf(tight, S, { all: 0.008, left_eye: 0.022, right_eye: 0.022, nose: 0.012 })
+      : dilate(unionOf(masks, S), S, S, px(0.012));
+  // 머리카락이나 얼굴 윤곽 밖(앞머리 끝 등)은 지우지 않는다 — 피부색으로 채우면 머리카락에 네모난 홈이 생긴다
+  for (let i = 0; i < S * S; i++) if (hairRaw[i] || faceMask[i] < 128) hole[i] = 0;
+
+  // 채울 색을 가져올 피부: 얼굴 윤곽 안, 머리카락·지울 부위 아님, 너무 어둡거나(그림자) 밝지(반사) 않음
+  const source = new Uint8ClampedArray(S * S);
+  for (let i = 0; i < S * S; i++) {
+    const l = lum(i);
+    source[i] = faceMask[i] > 128 && !hairRaw[i] && !partZone[i] && l > 60 && l < 245 ? 255 : 0;
+  }
+  const filled = inpaint(src, hole, S, S, { noise: 0, source });
+
+  const zr = style === 'clean' ? 0.008 : 0.01;
+  const zone = boxBlur(dilate(hole, S, S, px(zr)), S, S, px(zr));
+  const soft = blurRGB(filled, S, S, px(style === 'clean' ? 0.005 : 0.009));
+  const tex = skinPatch(src, S, faceMask, dilate(unionOf(masks, S), S, S, 12));
+  const out = new Uint8ClampedArray(filled.length);
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      const i = y * S + x;
+      const k = (zone[i] / 255) * (faceMask[i] / 255) * (1 - hair[i] / 255);
+      const t = Math.max(k, hole[i] / 255);
+      // 잔결은 반만 — 모공·주근깨가 많은 피부에서 반복 무늬가 점박이로 보이지 않게
+      for (let c = 0; c < 3; c++) out[i * 4 + c] = filled[i * 4 + c] * (1 - k) + soft[i * 4 + c] * k + (tex ? tex(x, y, c) * t * 0.5 : 0);
+      out[i * 4 + 3] = 255;
+    }
+  }
+  const c = canvas(S);
+  c.getContext('2d').putImageData(new ImageData(out, S, S), 0, 0);
   return c;
+}
+
+/** 부위별 마스크의 합 (0/255). grow: 부위별로 더 넓힐 비율 (all = 기본) */
+function unionOf(masks, S, grow = {}) {
+  const u = new Uint8ClampedArray(S * S);
+  for (const [id, a] of Object.entries(masks)) {
+    const r = Math.round(S * (grow[id] ?? grow.all ?? 0));
+    const d = dilate(threshold(a, 16), S, S, r);
+    for (let i = 0; i < u.length; i++) u[i] = Math.max(u[i], d[i]);
+  }
+  return u;
+}
+
+/**
+ * 피부 잔결: 얼굴 안에서 부위와 겹치지 않는 가장 매끈한 48px 조각을 찾아, (원본 − 흐린 원본)을 거울 타일로 돌려준다.
+ * 찾지 못하면 null.
+ */
+function skinPatch(src, S, faceMask, avoid) {
+  const P = 48;
+  const fine = blurRGB(src, S, S, 3);
+  let best = null;
+  for (let y = 0; y + P < S; y += 8) {
+    for (let x = 0; x + P < S; x += 8) {
+      let ok = true;
+      let e = 0;
+      for (let j = 0; j < P && ok; j += 4) {
+        for (let i = 0; i < P; i += 4) {
+          const k = (y + j) * S + x + i;
+          if (avoid[k] || faceMask[k] < 250) {
+            ok = false;
+            break;
+          }
+          e += Math.abs(src[k * 4] - fine[k * 4]);
+        }
+      }
+      if (ok && (!best || e < best.e)) best = { x, y, e };
+    }
+  }
+  if (!best) return null;
+  const refl = (v) => {
+    const p = v % (2 * P);
+    return p < P ? p : 2 * P - 1 - p;
+  };
+  return (x, y, c) => {
+    const q = ((best.y + refl(y)) * S + best.x + refl(x)) * 4 + c;
+    return src[q] - fine[q];
+  };
 }
 
 const threshold = (a, t) => a.map((v) => (v > t ? 255 : 0));
@@ -168,8 +265,8 @@ export function recomposite(empty, crop, masks) {
  * 게임이 쓰는 얼굴 데이터
  * @param tight 부위별 실제 윤곽 마스크 — 스티커·스톤 모양은 (손으로 다듬은) 지우기 마스크와 이것이 겹치는 부분만 쓴다
  */
-export function buildFace(crop, masks, faceBox, tight) {
-  const empty = makeEmptyFace(crop, masks);
+export function buildFace(crop, masks, faceBox, tight, faceMask, style = 'blur') {
+  const empty = makeEmptyFace(crop, masks, { tight, faceMask, style });
   const parts = {};
   for (const p of FACE_PARTS) {
     const s = makeSticker(crop, masks[p.id].map((v, i) => Math.min(v, tight[p.id][i])));

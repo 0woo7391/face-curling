@@ -66,10 +66,10 @@ export function partPolygons(lm, C) {
   const s = face.x1 - face.x0; // 얼굴 폭 기준 여백
   return {
     polygons: {
-      left_brow: grow(browL, 1.08, 1.6, s * 0.012),
-      right_brow: grow(browR, 1.08, 1.6, s * 0.012),
-      left_eye: grow(eyeL, 1.3, 2.1, s * 0.015),
-      right_eye: grow(eyeR, 1.3, 2.1, s * 0.015),
+      left_brow: grow(browL, 1.08, 1.3, s * 0.012),
+      right_brow: grow(browR, 1.08, 1.3, s * 0.012),
+      left_eye: grow(eyeL, 1.3, 1.5, s * 0.015),
+      right_eye: grow(eyeR, 1.3, 1.5, s * 0.015),
       nose: grow(hull(NOSE_INDICES), 1.25, 1.12, s * 0.02),
       mouth: grow(hull(indicesOf(C.lips)), 1.12, 1.25, s * 0.012),
     },
@@ -83,6 +83,8 @@ export function partPolygons(lm, C) {
       mouth: grow(hull(indicesOf(C.lips)), 1, 1.05, s * 0.005),
     },
     faceBox: face,
+    // 얼굴 윤곽: 빈 얼굴의 흐림을 이 안으로 제한하고, 채울 피부색을 이 안에서만 가져온다
+    oval: convexHull(indicesOf(C.oval).map((i) => lm[i])),
   };
 }
 

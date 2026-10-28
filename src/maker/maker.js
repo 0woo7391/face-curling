@@ -152,7 +152,8 @@ export class FaceMaker {
       this.say('이 범위에서는 얼굴을 찾지 못했어요. 조금 넓게 잘라 주세요.', 'error');
       return;
     }
-    const { polygons, tight, faceBox } = partPolygons(found.landmarks, CONNECTIONS);
+    const { polygons, tight, faceBox, oval } = partPolygons(found.landmarks, CONNECTIONS);
+    this.faceMask = polygonMask(oval, N, 6);
     this.cropCanvas = crop;
     this.faceBox = faceBox;
     this.polygons = polygons;
@@ -276,12 +277,24 @@ export class FaceMaker {
     this.foot.innerHTML = '';
     // 화면이 먼저 바뀌도록 한 프레임 쉬고 계산
     setTimeout(() => {
-      this.face = buildFace(this.cropCanvas, this.masks, this.faceBox, this.tightMasks);
-      this.recomp = recomposite(this.face.empty, this.cropCanvas, this.masks);
+      this.buildEmpty();
       const warns = this.layoutWarnings(this.face);
       this.say(warns.length ? warns.join(' ') : '', warns.length ? 'warn' : '');
-      this.tools.innerHTML = `<div class="mk-seg wide"><button data-show="empty">빈 얼굴</button><button data-show="orig">원본</button><button data-show="recomp">다시 붙이기</button></div>`;
+      // 지우는 방식: 흐리게(흔적 없음, 가운데 흐림) / 깔끔하게(얼굴이 잘 남음, 매끈한 패치)
+      this.tools.innerHTML = `<div class="mk-seg wide"><button data-style="blur">흐리게</button><button data-style="clean">깔끔하게</button></div>
+        <div class="mk-seg wide"><button data-show="empty">빈 얼굴</button><button data-show="orig">원본</button><button data-show="recomp">다시 붙이기</button></div>`;
       this.tools.querySelectorAll('[data-show]').forEach((b) => b.addEventListener('click', () => this.show(b.dataset.show)));
+      this.tools.querySelectorAll('[data-style]').forEach((b) => b.addEventListener('click', () => {
+        if (this.eraseStyle === b.dataset.style) return;
+        this.eraseStyle = b.dataset.style;
+        this.say('빈 얼굴 만드는 중…', 'busy');
+        setTimeout(() => {
+          this.buildEmpty();
+          this.say('', '');
+          this.show('empty');
+        }, 30);
+      }));
+      this.tools.querySelectorAll('[data-style]').forEach((b) => b.classList.toggle('on', b.dataset.style === this.eraseStyle));
       this.foot.innerHTML = '<button data-act="back">◀ 다듬기</button><button class="primary" data-act="play">이 얼굴로 플레이 ▶</button>';
       this.foot.querySelector('[data-act=back]').addEventListener('click', () => this.goEdit());
       this.foot.querySelector('[data-act=play]').addEventListener('click', () => {
@@ -290,6 +303,14 @@ export class FaceMaker {
       });
       this.show('empty');
     }, 30);
+  }
+
+  /** 지우는 방식(this.eraseStyle)대로 빈 얼굴과 비교용 재합성을 만든다 */
+  buildEmpty() {
+    this.eraseStyle ??= 'blur';
+    this.face = buildFace(this.cropCanvas, this.masks, this.faceBox, this.tightMasks, this.faceMask, this.eraseStyle);
+    this.recomp = recomposite(this.face.empty, this.cropCanvas, this.masks);
+    this.tools.querySelectorAll('[data-style]').forEach((b) => b.classList.toggle('on', b.dataset.style === this.eraseStyle));
   }
 
   show(which) {
