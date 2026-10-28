@@ -89,7 +89,7 @@ export class Simulation {
   }
 
   /**
-   * 한 고정 틱. @param sweep {id, s} — 스위핑 중인 스톤과 강도, 없으면 null
+   * 한 고정 틱. @param sweep {id, s, steer} — 스위핑 중인 스톤과 강도·좌우 유도, 없으면 null
    * @returns {{out: string[], hits: {a,b,x,y,impulse}[], stops: string[]}}
    *   out: 경기장을 벗어나 제거된 스톤, hits: 스톤끼리 충돌(접근 상대속도), stops: 이번 틱에 정지한 스톤
    */
@@ -104,8 +104,8 @@ export class Simulation {
       s.prevAngle = s.angle;
       const v = s.body.linvel();
       if (v.x === 0 && v.y === 0) continue;
-      const si = sweep && sweep.id === s.id ? sweep.s : 0;
-      s.body.setLinvel(stepStoneVelocity(v.x, v.y, s.spin, si, cfg, dt), true);
+      const mine = sweep && sweep.id === s.id;
+      s.body.setLinvel(stepStoneVelocity(v.x, v.y, s.spin, mine ? sweep.s : 0, cfg, dt, mine ? sweep.steer ?? 0 : 0), true);
       // 시계(+spin) = 각속도 −. 진행 거리에 비례하므로 같은 거리를 가면 같은 각도만큼 돈다
       if (s.driven) s.body.setAngvel(-s.spin * cfg.spinTurnRate * Math.hypot(v.x, v.y), true);
     }

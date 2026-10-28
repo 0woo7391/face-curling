@@ -67,13 +67,13 @@ describe('모양 스톤 물리', () => {
     expect(Math.abs(diff)).toBeLessThan(0.2);
   });
 
-  it('기울기만큼 감점: 90°면 30%', async () => {
+  it('기울기만큼 감점: 90°면 tiltPenalty(15%)', async () => {
     const g = await newGame();
     for (const p of g.parts) g.sim.placeStone(p.id, g.board.qToWorld(p.q).x, g.board.qToWorld(p.q).y, 0, 0, 0, p.id === 'mouth' ? Math.PI / 2 : 0);
     for (const p of g.parts) p.status = 'stopped';
     const rows = g.computeScores().rows;
     expect(rows.find((r) => r.id === 'nose').score).toBeCloseTo(100);
-    expect(rows.find((r) => r.id === 'mouth').score).toBeCloseTo(70);
+    expect(rows.find((r) => r.id === 'mouth').score).toBeCloseTo(100 * (1 - g.cfg.tiltPenalty));
   });
 
   it('큰 스톤일수록 충돌 이벤트의 질량이 크다', async () => {

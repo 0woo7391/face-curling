@@ -25,8 +25,8 @@ describe('Game 흐름', () => {
     runUntil(g2, settledOrDone(g2), sweepBot(g2));
     expect(g2.stats.burnsBody + g2.stats.burnsBroom).toBe(0);
     expect(g2.stats.lastThrow.avgSweep).toBeGreaterThan(0.3);
-    // 실제 크기 코는 앞쪽이 길어 봇이 스톤 앞에 늦게 자리 잡는다 (약 +0.49 m)
-    expect(g2.sim.stones.get('nose').y).toBeGreaterThan(g1.sim.stones.get('nose').y + 0.3);
+    // 실제 크기 코는 앞쪽이 길어 봇이 스톤 앞에 늦게 자리 잡고, 스위핑은 미세 조정 정도 (약 +0.25 m)
+    expect(g2.sim.stones.get('nose').y).toBeGreaterThan(g1.sim.stones.get('nose').y + 0.15);
   });
 
   it('효율 영역 밖에서 연타만 하면 거리 변화 없음', async () => {
@@ -240,6 +240,25 @@ describe('스위핑 보조 (sweepAssist)', () => {
     throwPart(g, 'left_eye', { power: 0.75, spin: -1, aimX: 2 });
     runUntil(g, settledOrDone(g), scrub(g));
     expect(g.stats.lastThrow.avgSweep).toBeGreaterThan(0.5);
+  });
+  it('흔드는 자리 쪽으로 스톤이 끌린다 (왼쪽 −, 오른쪽 +, 1 m 안팎)', async () => {
+    const endX = async (steer) => {
+      const g = await newGame('record', { sweepAssist: true });
+      throwPart(g, 'nose', { power: 0.6 });
+      const sc = scrub(g);
+      runUntil(g, settledOrDone(g), () => {
+        g.enqueue({ type: 'steer', x: steer });
+        sc();
+      });
+      return g.sim.stones.get('nose').x;
+    };
+    const left = await endX(-1);
+    const mid = await endX(0);
+    const right = await endX(1);
+    expect(mid).toBeCloseTo(0, 6);
+    expect(left).toBeLessThan(-0.5);
+    expect(right).toBeGreaterThan(0.5);
+    expect(right).toBeLessThan(1.6);
   });
   it('보조 중에는 캐릭터가 경로에 서 있어도 번드가 없다', async () => {
     const g = await newGame('record', { sweepAssist: true });

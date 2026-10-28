@@ -4,9 +4,10 @@
 // 스위핑
 //   보조 켬(기본): 버튼을 누른 채(= 빗자루를 얼음에 댐) 좌우로 흔들기. 방향이 바뀔 때마다 한 번 쓸기,
 //                  손의 좌우 위치대로 빗자루가 스톤 앞에서 움직인다 (터치와 같은 동작). 마우스 잠금 없음.
+//                  흔드는 자리가 화면 왼쪽/오른쪽이면 스톤이 그쪽으로 끌린다 (steer).
 //   보조 끔(v1.2): Pointer Lock + movementX/Y로 월드 고정 목표점 이동, 좌클릭 밀기 → 우클릭 당기기.
 //                  버튼은 mousedown + e.button으로 받는다 — 다른 버튼을 누른 채 추가로 누르면 pointerdown이 오지 않기 때문.
-import { SwipeStrokeDetector, HandTracker } from './swipe.js';
+import { SwipeStrokeDetector, HandTracker, steerFromX } from './swipe.js';
 
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
 const AIM_SCALE = 0.5; // 당기는 각도 대비 투구 각도 — 작은 각도를 정밀하게
@@ -90,6 +91,7 @@ export class MouseInput {
       this.game.setThrow(Math.atan2(-dx, dy) * AIM_SCALE, pull);
     } else if (this.scrub && e.pointerId === this.scrub.id) {
       this.game.enqueue({ type: 'hand', x: this.scrub.hand.move(e.clientX) });
+      this.game.enqueue({ type: 'steer', x: steerFromX(this.scrub.hand.center, this.canvas.getBoundingClientRect()) });
       const s = this.scrub.det.move(e.clientX);
       if (s) this.game.enqueue({ type: 'press', button: s === 'push' ? 0 : 2 });
     }
@@ -99,6 +101,7 @@ export class MouseInput {
     if (this.scrub && e.pointerId === this.scrub.id) {
       this.scrub = null; // 버튼을 떼면 빗자루가 들린다
       this.game.enqueue({ type: 'hand', x: 0 });
+      this.game.enqueue({ type: 'steer', x: 0 });
     }
     if (!this.drag || e.pointerId !== this.drag.id) return;
     this.drag = null;

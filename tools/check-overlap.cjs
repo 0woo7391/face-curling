@@ -42,7 +42,7 @@ const HUD = ['#home .home-logo', '#home .home-panel', '#pause', '#lock-overlay',
         const g = window.__game;
         for (let i = 0; i < 4000 && g.state !== 'PART_SELECT'; i++) g.tick();
         for (const id of ['left_brow', 'right_brow', 'left_eye', 'right_eye', 'mouth']) {
-          g.selectPart(id); g.setThrow(0, 0.78); g.release();
+          g.selectPart(id); g.setThrow(0, 0.57); g.release();
           for (let i = 0; i < 4000 && !['PART_SELECT', 'RESULT'].includes(g.state); i++) g.tick();
         }
       }],

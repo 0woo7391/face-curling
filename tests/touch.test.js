@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { SwipeStrokeDetector, HandTracker } from '../src/input/swipe.js';
+import { SwipeStrokeDetector, HandTracker, steerFromX } from '../src/input/swipe.js';
 import { newGame, throwPart, runUntil } from './helpers.js';
 
 describe('SwipeStrokeDetector', () => {
@@ -68,5 +68,16 @@ describe('HandTracker', () => {
     let v = 0;
     for (let i = 0; i < 200; i++) v = h.move(300);
     expect(Math.abs(v)).toBeLessThan(0.05);
+  });
+});
+
+describe('steerFromX', () => {
+  const rect = { left: 0, width: 400 };
+  it('가운데 근처는 곧게, 끝으로 갈수록 그쪽', () => {
+    expect(steerFromX(200, rect)).toBe(0);
+    expect(steerFromX(215, rect)).toBe(0); // 데드존
+    expect(steerFromX(0, rect)).toBe(-1);
+    expect(steerFromX(400, rect)).toBe(1);
+    expect(steerFromX(300, rect)).toBeGreaterThan(0.5);
   });
 });

@@ -8,7 +8,8 @@ const STORAGE_KEY = 'face-curling-poc-a-config';
 export function loadSavedConfig() {
   try {
     const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) ?? '{}');
-    return Object.fromEntries(Object.entries(saved).filter(([k]) => k in DEFAULTS));
+    // 스위핑 직접 이동(어려움)은 튜닝 패널에서만 잠깐 켜는 개발용 — 예전에 저장된 값은 무시하고 항상 자동으로 시작
+    return Object.fromEntries(Object.entries(saved).filter(([k]) => k in DEFAULTS && k !== 'sweepAssist'));
   } catch {
     return {};
   }
@@ -30,7 +31,7 @@ const FOLDERS = [
     ['curlSpeedRef', 0.2, 4, 0.05], ['sweepCurlReduction', 0, 1, 0.01], ['restitution', 0.3, 1, 0.01],
     ['stopSpeed', 0.005, 0.1, 0.005],
   ]],
-  ['투구', [['minLaunchSpeed', 0.5, 4, 0.05], ['maxLaunchSpeed', 2, 7, 0.05], ['maxAimDeg', 2, 30, 0.5]]],
+  ['투구', [['minThrowDist', 5, 25, 0.5], ['maxThrowDist', 20, 40, 0.5], ['maxAimDeg', 2, 30, 0.5]]],
   ['캐릭터·스위핑', [
     ['charSpeed', 2, 12, 0.1], ['charAccel', 5, 80, 1], ['charStartAhead', 0, 5, 0.1],
     ['mouseSensitivity', 0.003, 0.06, 0.001], ['forwardSensitivityScale', 0.5, 4, 0.1],

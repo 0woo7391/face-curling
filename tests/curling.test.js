@@ -35,15 +35,21 @@ describe('stepStoneVelocity', () => {
       pa.x += a.x * dt; pa.y += a.y * dt;
       pb.x += b.x * dt; pb.y += b.y * dt;
     }
-    expect(pb.y).toBeGreaterThan(pa.y * 1.15);
+    expect(pb.y).toBeGreaterThan(pa.y * 1.1); // 끝까지 쓸면 약 13% 더 감
     expect(Math.abs(pb.x) / pb.y).toBeLessThan(Math.abs(pa.x) / pa.y);
   });
 
   it('최대 파워는 보드를 넘고 최소 파워는 보드에 못 미친다', () => {
-    const far = predictPath(0, 0, 0, cfg.maxLaunchSpeed, 0, cfg).end.y;
-    const near = predictPath(0, 0, 0, cfg.minLaunchSpeed, 0, cfg).end.y;
-    expect(far).toBeGreaterThan(cfg.boardCenterY + cfg.boardSize / 2);
-    expect(near).toBeLessThan(cfg.boardCenterY - cfg.boardSize / 2);
+    const end = (p) => predictPath(0, 0, 0, launchVelocity(0, p, cfg).y, 0, cfg).end.y;
+    expect(end(1)).toBeGreaterThan(cfg.boardCenterY + cfg.boardSize / 2);
+    expect(end(0)).toBeLessThan(cfg.boardCenterY - cfg.boardSize / 2);
+  });
+
+  it('파워는 멈출 거리에 고르게 대응한다 (보드 근처에서 1%당 0.15 m 이하)', () => {
+    const end = (p) => predictPath(0, 0, 0, launchVelocity(0, p, cfg).y, 0, cfg).end.y;
+    expect(end(0)).toBeCloseTo(cfg.minThrowDist, 0);
+    expect(end(1)).toBeCloseTo(cfg.maxThrowDist, 0);
+    expect(end(0.58) - end(0.57)).toBeLessThan(0.15);
   });
 });
 

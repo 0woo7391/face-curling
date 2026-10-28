@@ -67,6 +67,8 @@ export class Game {
     this.queue = [];
     this.joy = { x: 0, y: 0 }; // 터치 조이스틱 기울기 (-1..1, y+ = 진행 방향)
     this.hand = 0; // 흔드는 손의 좌우 위치 (-1..1) — 흔들기 모드에서 빗자루가 따라간다
+    this.steerTarget = 0; // 흔드는 자리 (-1..1, 화면 왼쪽 = -) — 스톤을 그쪽으로 끈다
+    this.steer = 0; // steerTarget을 부드럽게 따라간 값
     this.checkpoint = null;
     this.burn = null;
     this.burnTimer = 0;
@@ -187,6 +189,8 @@ export class Game {
     this.queue.length = 0;
     this.joy = { x: 0, y: 0 };
     this.hand = 0;
+    this.steerTarget = 0;
+    this.steer = 0;
     this.state = 'SWEEP';
     this.push({ type: 'launch', partId: this.currentPartId, speed: Math.hypot(v.x, v.y), spin: this.spin, x: LAUNCH.x, y: LAUNCH.y });
   }
@@ -215,6 +219,7 @@ export class Game {
       else if (ev.type === 'moveAbs') this.character.setTarget(ev.x, ev.y, this.bounds);
       else if (ev.type === 'joy') this.joy = { x: ev.x, y: ev.y };
       else if (ev.type === 'hand') this.hand = Math.max(-1, Math.min(1, ev.x));
+      else if (ev.type === 'steer') this.steerTarget = Math.max(-1, Math.min(1, ev.x));
       else if (ev.type === 'press' && this.state === 'SWEEP') {
         const r = this.sweep.press(ev.button, this.tickCount);
         if (r === 'rejected-order' || r === 'rejected-busy') this.push({ type: 'reject', reason: r });
@@ -231,17 +236,18 @@ export class Game {
     const moving = this.sim.movingStones();
     const cur = this.currentStone;
     const assist = this.cfg.sweepAssist;
+    this.steer = assist ? this.steer + (this.steerTarget - this.steer) * Math.min(1, dt * 8) : 0;
     if (assist && cur && cur.status === 'moving') this.autoFollow(cur);
     const ref = cur && cur.status === 'moving' ? cur : nearest(moving, this.character.pos);
     this.character.update(dt, ref ? ref.x : null);
 
     // 빗자루 = 몸 기준 위치 + 왕복 + 자동 회피 보조
-    //   흔들기(보조) 모드: 손의 좌우 위치대로 스톤 진행 방향에 가로로 / 직접 이동: 스트로크 애니메이션대로 진행 방향 앞뒤로
+    //   흔들기(보조) 모드: 손의 좌우 위치대로 스톤 진행 방향에 가로로, 흔드는 자리(steer) 쪽으로 비켜서 / 직접 이동: 스트로크 애니메이션대로 진행 방향 앞뒤로
     const base = this.character.broomBase();
     let raw;
     if (assist && cur && cur.status === 'moving') {
       const sp = Math.hypot(cur.vx, cur.vy) || 1;
-      const sw = this.hand * this.cfg.sweepSwing;
+      const sw = this.hand * this.cfg.sweepSwing + this.steer * this.cfg.steerReach;
       raw = { x: base.x + (cur.vy / sp) * sw, y: base.y - (cur.vx / sp) * sw };
     } else raw = { x: base.x, y: base.y + this.sweep.strokeOffset(this.tickCount) * this.cfg.strokeAmp };
     this.character.assist = updateAssist(this.character.assist, raw, nearest(moving, raw), this.cfg, dt);
@@ -279,7 +285,7 @@ export class Game {
       this.throwInfo.sweepSum += s;
     }
 
-    const { out, hits, stops } = this.sim.step(this.state === 'SWEEP' && cur ? { id: cur.id, s } : null);
+    const { out, hits, stops } = this.sim.step(this.state === 'SWEEP' && cur ? { id: cur.id, s, steer: this.steer } : null);
     for (const h of hits) this.push({ type: 'collision', ...h });
     for (const id of stops) {
       const st = this.sim.stones.get(id);

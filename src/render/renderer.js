@@ -31,6 +31,22 @@ const C = {
 const basic = (color, opacity = 1) =>
   new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1, side: THREE.DoubleSide, toneMapped: false });
 
+/** 세로 막대 게이지 (파워·속도): 투명한 통 + 채움 + 위 고리. fill.scale.y = 0..1 */
+function makeGauge() {
+  const group = new THREE.Group();
+  const frame = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.07, 0.07, 1, 16, 1, true),
+    new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
+  );
+  frame.position.y = 0.5;
+  const fill = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 16), new THREE.MeshBasicMaterial({ color: '#66bb6a', toneMapped: false }));
+  const cap = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 8, 24), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
+  cap.rotation.x = Math.PI / 2;
+  cap.position.y = 1;
+  group.add(frame, fill, cap);
+  return { group, fill };
+}
+
 /** 고리 크기를 바꿀 때만 형상을 다시 만든다 (drawRange는 유지) */
 function fitRing(m, inner, outer) {
   const key = `${inner.toFixed(3)}:${outer.toFixed(3)}`;
@@ -233,22 +249,16 @@ export class Renderer {
     for (const m of [this.aimShaft, this.aimHead]) m.material.transparent = true;
     this.aim.add(this.aimShaft, this.aimHead);
 
-    this.gauge = new THREE.Group();
-    const frame = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.07, 0.07, 1, 16, 1, true),
-      new THREE.MeshBasicMaterial({ color: '#ffffff', transparent: true, opacity: 0.25, side: THREE.DoubleSide, depthWrite: false }),
-    );
-    frame.position.y = 0.5;
-    this.gaugeFill = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.06, 1, 16), new THREE.MeshBasicMaterial({ color: '#66bb6a', toneMapped: false }));
-    const cap = new THREE.Mesh(new THREE.TorusGeometry(0.07, 0.012, 8, 24), new THREE.MeshBasicMaterial({ color: '#ffffff' }));
-    cap.rotation.x = Math.PI / 2;
-    cap.position.y = 1;
-    this.gauge.add(frame, this.gaugeFill, cap);
+    ({ group: this.gauge, fill: this.gaugeFill } = makeGauge());
+    // 발사 전 일직선: 겨냥한 방향으로 레인 끝까지 곧게 (휘는 길·멈출 곳은 그리지 않는다)
+    this.aimLine = flatStrip('#ffffff', 0.35);
+    // 굴러가는 동안 속도 막대: 빠르면 길고 초록, 느려질수록 짧고 빨강
+    ({ group: this.speedGauge, fill: this.speedFill } = makeGauge());
 
     this.spinArc = null;
     this.spinHead = flatTriangle('#ff7043', 0.06, 0.11);
     this.spinHead.material.transparent = true;
-    this.scene.add(this.previewStone, this.aim, this.gauge, this.spinHead);
+    this.scene.add(this.previewStone, this.aim, this.gauge, this.spinHead, this.aimLine, this.speedGauge);
   }
 
   buildCharacter() {
@@ -493,7 +503,7 @@ export class Renderer {
     const st = game.state;
     const aiming = st === 'THROW';
     const pulling = aiming && game.power > 0;
-    this.previewStone.visible = this.aim.visible = aiming;
+    this.previewStone.visible = this.aim.visible = this.aimLine.visible = aiming;
     this.gauge.visible = pulling;
     if (!aiming) {
       this.updateSpinArc(0, false);
@@ -536,6 +546,9 @@ export class Renderer {
     }
 
     this.updateSpinArc(game.spin, true, stone, 0.95, r);
+
+    const lineLen = (this.cfg.laneLength - stone.y) / Math.max(0.2, dy);
+    placeStrip(this.aimLine, stone, { x: stone.x + dx * lineLen, y: stone.y + dy * lineLen }, 0.035, 0.006);
   }
 
   /** 회전 고리: 스톤에 딱 붙어서, 길이·두께 = 세기, 화살촉 = 방향, 색 = 시계(주황)/반시계(청록) */
@@ -612,6 +625,19 @@ export class Renderer {
     const { cfg } = game;
     const cur = game.currentStone;
     const sweeping = game.state === 'SWEEP' && cur && cur.status === 'moving';
+
+    // 속도 막대: 던진 스톤이 굴러가는 동안 옆에 선다 (스위핑을 언제 할지 판단용)
+    const rolling = (game.state === 'SWEEP' || game.state === 'SETTLING') && cur && cur.status === 'moving';
+    this.speedGauge.visible = !!rolling;
+    if (rolling) {
+      const sp = Math.hypot(cur.vx, cur.vy);
+      const k = Math.min(1, sp / Math.sqrt(2 * cfg.friction * cfg.maxThrowDist));
+      const p = { x: lerp(cur.prevX, cur.x, alpha), y: lerp(cur.prevY, cur.y, alpha) };
+      this.speedGauge.position.copy(V(p.x + cur.radius + 0.35, p.y));
+      this.speedFill.scale.y = Math.max(0.02, k);
+      this.speedFill.position.y = Math.max(0.02, k) / 2;
+      this.speedFill.material.color.copy(k < 0.5 ? C.powerHi.clone().lerp(C.powerMid, k * 2) : C.powerMid.clone().lerp(C.powerLo, (k - 0.5) * 2));
+    }
 
     // 강도 고리: 스톤 둘레를 채우는 길이와 색으로 지금 스위핑 세기
     const s = game.sweep.intensity;

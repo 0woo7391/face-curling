@@ -45,7 +45,6 @@ export class Hud {
     on('p-restart', () => this.confirm('p-restart', '정말 처음부터? 한 번 더', () => actions.restartGame()));
     on('p-home', () => this.confirm('p-home', '진행 중인 게임을 그만둘까요? 한 번 더', () => actions.goHome()));
     on('p-sound', () => actions.toggleMute());
-    on('p-assist', () => actions.toggleAssist());
     on('p-help', () => this.toggleHelp());
     on('p-tune', () => actions.toggleTuning());
     $('help').addEventListener('click', () => $('help').classList.remove('open'));
@@ -154,7 +153,6 @@ export class Hud {
     const sound = app.muted ? '🔇' : '🔊';
     this.set('hs', $('home-sound'), sound);
     this.set('ps', $('p-sound'), `${sound} 소리`);
-    this.set('pa', $('p-assist'), g.cfg.sweepAssist ? '🧹 스위핑: 자동 따라가기 (쉬움)' : '🧹 스위핑: 직접 이동 (어려움)');
     if (app.screen === 'home') this.updateHome();
     $('mode-badge').hidden = g.mode !== 'practice';
 
@@ -282,7 +280,7 @@ export class Hud {
         return g.power > 0 ? '놓으면 발사 · 위로 올리면 취소' : '아무 데나 누른 채 아래로 당겼다 놓기';
       case 'SWEEP':
         if (this.learned >= LEARN_STROKES) return '';
-        if (g.cfg.sweepAssist) return touch ? '화면을 좌우로 문질러 쓸기' : '버튼 누른 채 좌우로 흔들어 쓸기';
+        if (g.cfg.sweepAssist) return touch ? '좌우로 문질러 쓸기 · 문지르는 쪽으로 끌려요' : '누른 채 좌우로 흔들어 쓸기 · 흔드는 쪽으로 끌려요';
         return touch ? '왼쪽 = 이동 · 오른쪽 = 좌우로 문지르기' : '빗자루를 스톤 앞에 대고 좌·우 번갈아 클릭';
       default:
         return '';

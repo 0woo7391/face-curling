@@ -5,25 +5,28 @@ export const DEFAULTS = Object.freeze({
   tickRate: 60,
   stoneRadius: 0.13,
   friction: 0.35, // μ: 기본 감속
-  sweepFrictionReduction: 0.22, // 스위핑 강도 s=1일 때 μ 감소율
+  sweepFrictionReduction: 0.12, // 스위핑 강도 s=1일 때 μ 감소율 — 끝까지 쓸면 24 m가 약 27 m (미세 조정)
   curlK: 0.12, // 곡률 가속 기준값 — ●●(spin 1)로 24 m 가면 약 1.35 m 휨
   curlSpeedRef: 1.2, // 이 속도보다 느려질수록 곡률이 커짐
   sweepCurlReduction: 0.8, // s=1일 때 곡률 감소율 — 쓸면 곧게, 멈추면 휜다
+  steerK: 0.03, // 한쪽 끝에서 쓸 때(steer 1, s=1) 옆으로 끄는 가속 (m/s²) — 보통 세기로 끝까지 쓸면 24 m에서 약 1 m
+  steerReach: 0.22, // 한쪽 끝에서 쓸 때 빗자루가 스톤 앞 가운데에서 옆으로 비켜나는 거리 (m)
   restitution: 0.88,
   stopSpeed: 0.03,
   stopHoldTicks: 10,
   spinTurnRate: 0.52, // 회전 1(●●)일 때 진행 1 m당 도는 각도 (rad) — 24 m에서 약 2바퀴, ●는 약 1바퀴
   angularDamping: 0.8, // 충돌로 생긴 회전이 줄어드는 정도
-  tiltPenalty: 0.3, // 똑바로에서 90° 기울 때마다 점수에서 빼는 비율 (180° = 0.6)
+  tiltPenalty: 0.15, // 똑바로에서 90° 기울 때마다 점수에서 빼는 비율 (180° = 0.3)
   minShapeScale: 0.5, // 정답 자리끼리 겹칠 때 스톤 모양을 줄이는 하한
 
   // ── 투구 (3.7) ──
-  minLaunchSpeed: 2.0,
-  maxLaunchSpeed: 4.7,
+  // 파워 = 안 쓸고 곧게 갈 때 멈출 거리. 거리에 고르게 대응해야 보드 근처에서 너무 예민하지 않다
+  minThrowDist: 16,
+  maxThrowDist: 30,
   minPower: 0.05, // 이보다 약하면 발사하지 않음
   maxAimDeg: 12,
   defaultPreviewPower: 0.75,
-  maxPullFraction: 0.32, // 화면 높이의 이 비율만큼 당기면 파워 100%
+  maxPullFraction: 0.45, // 화면 높이의 이 비율만큼 당기면 파워 100%
 
   // ── 레인·보드 (5.4) — 바꾸면 재시작 ──
   laneWidth: 5.0,
@@ -67,7 +70,7 @@ export const DEFAULTS = Object.freeze({
   burnFreezeTicks: 30,
 
   // ── 채점 (6.3) ──
-  allowedError: 0.25,
+  allowedError: 0.4, // 정답에서 얼굴 대각선의 이 비율(기본 얼굴 약 1.6 m)만큼 벗어나면 0점
 });
 
 // 바꾸면 경기장·충돌체를 다시 만들어야 하는 키

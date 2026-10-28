@@ -9,7 +9,7 @@ import { Hud } from './ui/hud.js';
 import { Sound } from './audio/sound.js';
 import { loadFace, saveFace, clearFace } from './maker/store.js';
 import { buildShapes, defaultOutline } from './core/shape.js';
-import { createDebugPanel, loadSavedConfig, saveConfig } from './ui/debug.js';
+import { createDebugPanel, loadSavedConfig } from './ui/debug.js';
 
 const debugHooks = { paused: false };
 
@@ -67,11 +67,6 @@ async function main() {
     },
     toggleTuning() {
       debug.toggle();
-    },
-    /** 스위핑 보조 켬/끔 — 다음 틱부터 적용, 이 브라우저에 저장 */
-    toggleAssist() {
-      cfg.sweepAssist = !cfg.sweepAssist;
-      saveConfig(cfg);
     },
     async openMaker() {
       // 얼굴 만들기(MediaPipe 포함)는 처음 열 때만 불러온다

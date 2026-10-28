@@ -1,8 +1,9 @@
 // 터치 조작 (세로 화면 기본). 스위핑 중에만 동작한다.
-//   보조 켬(기본): 화면 어디서든 좌우로 문지르기. 방향이 바뀔 때마다 한 번 쓸기, 손가락 위치대로 빗자루가 움직인다
+//   보조 켬(기본): 화면 어디서든 좌우로 문지르기. 방향이 바뀔 때마다 한 번 쓸기, 손가락 위치대로 빗자루가 움직인다.
+//                  문지르는 자리가 화면 왼쪽/오른쪽이면 스톤이 그쪽으로 끌린다 (steer)
 //   보조 끔: 왼쪽 절반 = 누른 자리에 생기는 조이스틱(월드 고정 목표점 이동), 오른쪽 절반 = 좌우로 문지르기
 // 투구(새총 당기기)는 손가락 하나 드래그라 MouseInput의 Pointer Events가 그대로 처리한다.
-import { SwipeStrokeDetector, HandTracker } from './swipe.js';
+import { SwipeStrokeDetector, HandTracker, steerFromX } from './swipe.js';
 
 const SWEEP_STATES = new Set(['SWEEP', 'SETTLING']);
 const JOY_RADIUS = 56; // CSS px
@@ -62,6 +63,7 @@ export class TouchInput {
       this.showJoy(this.joy.ox, this.joy.oy, dx, dy);
     } else if (this.swipe && e.pointerId === this.swipe.id) {
       this.game.enqueue({ type: 'hand', x: this.hand.move(e.clientX) });
+      if (this.game.cfg.sweepAssist) this.game.enqueue({ type: 'steer', x: steerFromX(this.hand.center, this.canvas.getBoundingClientRect()) });
       const stroke = this.detector.move(e.clientX);
       if (stroke) {
         this.game.enqueue({ type: 'press', button: stroke === 'push' ? 0 : 2 });
@@ -80,6 +82,7 @@ export class TouchInput {
     } else if (this.swipe && e.pointerId === this.swipe.id) {
       this.swipe = null;
       this.game.enqueue({ type: 'hand', x: 0 });
+      this.game.enqueue({ type: 'steer', x: 0 });
     }
   }
 

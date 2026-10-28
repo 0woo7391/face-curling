@@ -46,3 +46,13 @@ export class HandTracker {
     return Math.max(-1, Math.min(1, (v - this.center) / this.range));
   }
 }
+
+/**
+ * 흔드는 위치 → 좌우 유도 (-1..1). 화면 가운데 근처(데드존)는 0 = 곧게, 왼쪽 끝 쪽일수록 -1 = 왼쪽으로.
+ * @param x 흔들기의 중심 (HandTracker.center) — 손끝의 순간 위치가 아니라 흔드는 자리
+ */
+export function steerFromX(x, rect, deadzone = 0.15) {
+  const r = (x - (rect.left + rect.width / 2)) / (rect.width * 0.35);
+  const a = Math.min(1, Math.max(0, (Math.abs(r) - deadzone) / (1 - deadzone)));
+  return Math.sign(r) * a;
+}
