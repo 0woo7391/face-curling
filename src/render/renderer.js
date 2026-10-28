@@ -277,15 +277,22 @@ export class Renderer {
     this.scene.add(this.character, this.stick, this.broomHead, this.target);
   }
 
-  /** 스위핑 반응: 스톤 둘레 강도 고리, 스톤 앞 얼음 녹는 띠, 위험할 때만 나타나는 경고 고리 */
+  /** 스위핑 반응: 스톤 앞 끌림 화살표, 얼음 녹는 띠, 위험할 때만 나타나는 경고 고리 */
   buildSweepFeedback(game) {
     const { cfg } = game;
-    // 고리 두 개는 스톤마다 크기가 달라 그 스톤의 감싸는 반지름으로 다시 만든다 (fitRing)
-    this.intensityRing = flatRing(1, 1.1, '#76ff03', 0.95, 48);
+    // 끌림 화살표: 방향 = 스톤이 끌리는 쪽(흔드는 자리), 길이·색 = 스위핑 세기
+    this.pullShaft = flatStrip('#76ff03');
+    this.pullHead = flatTriangle('#76ff03', 0.16, 0.28);
+    // 캐릭터 몸에 가려지지 않게 항상 위에 그린다
+    for (const m of [this.pullShaft, this.pullHead]) {
+      m.material.depthTest = false;
+      m.renderOrder = 10;
+    }
     this.melt = flatStrip('#b3e5fc', 0);
+    // 경고 고리는 스톤마다 크기가 달라 그 스톤의 감싸는 반지름으로 다시 만든다 (fitRing)
     this.cushionWarn = flatRing(1, 1.1, '#ffd600', 0.9);
     this.bodyWarn = flatRing(cfg.bodyJudgeRadius + 0.02, cfg.bodyJudgeRadius + 0.07, '#ff1744', 0.9);
-    this.scene.add(this.intensityRing, this.melt, this.cushionWarn, this.bodyWarn);
+    this.scene.add(this.pullShaft, this.pullHead, this.melt, this.cushionWarn, this.bodyWarn);
   }
 
   buildDebugSensors(game) {
@@ -639,15 +646,10 @@ export class Renderer {
       this.speedFill.material.color.copy(k < 0.5 ? C.powerHi.clone().lerp(C.powerMid, k * 2) : C.powerMid.clone().lerp(C.powerLo, (k - 0.5) * 2));
     }
 
-    // 강도 고리: 스톤 둘레를 채우는 길이와 색으로 지금 스위핑 세기
     const s = game.sweep.intensity;
-    this.intensityRing.visible = this.melt.visible = sweeping && s > 0.02;
-    if (this.intensityRing.visible) {
+    this.pullShaft.visible = this.pullHead.visible = this.melt.visible = sweeping && s > 0.02;
+    if (this.melt.visible) {
       const p = { x: lerp(cur.prevX, cur.x, alpha), y: lerp(cur.prevY, cur.y, alpha) };
-      fitRing(this.intensityRing, cur.radius + 0.04, cur.radius + 0.16);
-      this.intensityRing.position.copy(V(p.x, p.y, 0.01));
-      this.intensityRing.geometry.setDrawRange(0, Math.max(1, Math.round(48 * s)) * 6);
-      this.intensityRing.material.color.copy(C.low).lerp(C.good, s);
       // 스톤 앞 얼음이 녹는 띠: 세게 쓸수록 진하고 길다
       const sp = Math.hypot(cur.vx, cur.vy) || 1;
       const d = { x: cur.vx / sp, y: cur.vy / sp };
@@ -657,6 +659,20 @@ export class Renderer {
       const b = { x: a.x + d.x * (0.4 + 0.8 * s), y: a.y + d.y * (0.4 + 0.8 * s) };
       placeStrip(this.melt, a, b, half * 2.2, 0.007);
       this.melt.material.opacity = 0.15 + 0.5 * s;
+      // 끌림 화살표: 진행 방향을 흔드는 쪽으로 꺾은 방향 (오른쪽 수직 = (d.y, -d.x))
+      const ux = d.x + d.y * game.steer;
+      const uy = d.y - d.x * game.steer;
+      const ul = Math.hypot(ux, uy);
+      const u = { x: ux / ul, y: uy / ul };
+      const len = 0.3 + 1.2 * s;
+      const tip = { x: a.x + u.x * len, y: a.y + u.y * len };
+      placeStrip(this.pullShaft, a, tip, 0.06 + 0.06 * s, 0.012);
+      this.pullHead.position.copy(V(tip.x, tip.y, 0.013));
+      this.pullHead.rotation.y = -Math.atan2(u.x, u.y);
+      this.pullHead.scale.setScalar(0.7 + 0.6 * s);
+      const col = C.low.clone().lerp(C.good, s);
+      this.pullShaft.material.color.copy(col);
+      this.pullHead.material.color.copy(col);
     }
 
     // 경고: 빗자루가 쿠션에 들어오거나 닿을 때만, 몸이 움직이는 스톤에 가까울 때만 보인다

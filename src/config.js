@@ -9,8 +9,8 @@ export const DEFAULTS = Object.freeze({
   curlK: 0.12, // 곡률 가속 기준값 — ●●(spin 1)로 24 m 가면 약 1.35 m 휨
   curlSpeedRef: 1.2, // 이 속도보다 느려질수록 곡률이 커짐
   sweepCurlReduction: 0.8, // s=1일 때 곡률 감소율 — 쓸면 곧게, 멈추면 휜다
-  steerK: 0.03, // 한쪽 끝에서 쓸 때(steer 1, s=1) 옆으로 끄는 가속 (m/s²) — 보통 세기로 끝까지 쓸면 24 m에서 약 1 m
-  steerReach: 0.22, // 한쪽 끝에서 쓸 때 빗자루가 스톤 앞 가운데에서 옆으로 비켜나는 거리 (m)
+  steerK: 0.06, // 한쪽 끝에서 쓸 때(steer 1, s=1) 옆으로 끄는 가속 (m/s²) — 보통 세기로 끝까지 쓸면 24 m에서 약 2 m
+  steerReach: 0.4, // 한쪽 끝에서 쓸 때 빗자루가 스톤 앞 가운데에서 옆으로 비켜나는 거리 (m)
   restitution: 0.88,
   stopSpeed: 0.03,
   stopHoldTicks: 10,

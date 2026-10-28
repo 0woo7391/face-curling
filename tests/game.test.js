@@ -241,7 +241,7 @@ describe('스위핑 보조 (sweepAssist)', () => {
     runUntil(g, settledOrDone(g), scrub(g));
     expect(g.stats.lastThrow.avgSweep).toBeGreaterThan(0.5);
   });
-  it('흔드는 자리 쪽으로 스톤이 끌린다 (왼쪽 −, 오른쪽 +, 1 m 안팎)', async () => {
+  it('흔드는 자리 쪽으로 스톤이 끌린다 (왼쪽 −, 오른쪽 +, 2 m 안팎)', async () => {
     const endX = async (steer) => {
       const g = await newGame('record', { sweepAssist: true });
       throwPart(g, 'nose', { power: 0.6 });
@@ -256,9 +256,9 @@ describe('스위핑 보조 (sweepAssist)', () => {
     const mid = await endX(0);
     const right = await endX(1);
     expect(mid).toBeCloseTo(0, 6);
-    expect(left).toBeLessThan(-0.5);
-    expect(right).toBeGreaterThan(0.5);
-    expect(right).toBeLessThan(1.6);
+    expect(left).toBeLessThan(-1.2);
+    expect(right).toBeGreaterThan(1.2);
+    expect(right).toBeLessThan(3);
   });
   it('보조 중에는 캐릭터가 경로에 서 있어도 번드가 없다', async () => {
     const g = await newGame('record', { sweepAssist: true });
