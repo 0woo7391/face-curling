@@ -34,7 +34,9 @@ export function sweepPositionEfficiency(broom, stone, cfg) {
 
 /**
  * 밀기(좌클릭) → 당기기(우클릭) 교대 스트로크 상태 기계.
- * - 기대 순서와 다른 버튼, 스트로크 애니메이션 진행 중 입력은 인정하지 않는다.
+ * - 기대 순서와 다른 버튼은 인정하지 않는다.
+ * - 애니메이션이 끝나기 strokeBufferMs 이내에 들어온 '다음 순서' 입력은 1개까지 보관했다가 이어서 시작한다.
+ *   (조금 이른 입력 하나 때문에 이후 순서가 어긋나 스트로크 두 개를 잃는 것을 막음. 속도 상한은 그대로)
  * - 효력은 버튼을 누른 순간이 아니라 스트로크 애니메이션이 끝나는 틱에 부여한다.
  */
 export class SweepController {
@@ -46,6 +48,7 @@ export class SweepController {
   reset() {
     this.expect = 'push';
     this.anim = null;
+    this.buffered = null;
     this.validTicks = [];
     this.history = []; // 최근 스트로크 [{kind, valid}]
     this.intensity = 0;
@@ -55,19 +58,29 @@ export class SweepController {
     this.lastResult = null;
   }
 
-  /** @returns {'started'|'rejected-busy'|'rejected-order'|'ignored'} */
+  /** @returns {'started'|'buffered'|'rejected-busy'|'rejected-order'|'ignored'} */
   press(button, tick) {
     const kind = button === 0 ? 'push' : button === 2 ? 'pull' : null;
     let result;
     if (!kind) result = 'ignored';
-    else if (this.anim) result = 'rejected-busy';
-    else if (kind !== this.expect) result = 'rejected-order';
+    else if (this.anim) {
+      const next = this.anim.kind === 'push' ? 'pull' : 'push';
+      const early = this.anim.end - tick <= msToTicks(this.cfg.strokeBufferMs, this.cfg);
+      if (kind === next && early && !this.buffered) {
+        this.buffered = kind;
+        result = 'buffered';
+      } else result = 'rejected-busy';
+    } else if (kind !== this.expect) result = 'rejected-order';
     else {
-      this.anim = { kind, start: tick, end: tick + msToTicks(this.cfg.strokeDurationMs, this.cfg) };
+      this.startStroke(kind, tick);
       result = 'started';
     }
     this.lastResult = result;
     return result;
+  }
+
+  startStroke(kind, tick) {
+    this.anim = { kind, start: tick, end: tick + msToTicks(this.cfg.strokeDurationMs, this.cfg) };
   }
 
   penalize(tick) {
@@ -91,6 +104,10 @@ export class SweepController {
       this.restOffset = this.anim.kind === 'push' ? 0.5 : -0.5;
       this.expect = this.anim.kind === 'push' ? 'pull' : 'push';
       this.anim = null;
+      if (this.buffered) {
+        this.startStroke(this.buffered, tick);
+        this.buffered = null;
+      }
     }
     const windowTicks = msToTicks(cfg.strokeWindowMs, cfg);
     while (this.validTicks.length && this.validTicks[0] <= tick - windowTicks) this.validTicks.shift();

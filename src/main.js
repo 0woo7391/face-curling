@@ -4,6 +4,7 @@ import { Game } from './core/game.js';
 import { FixedStepper } from './core/stepper.js';
 import { Renderer } from './render/renderer.js';
 import { MouseInput } from './input/mouse.js';
+import { TouchInput } from './input/touch.js';
 import { Hud } from './ui/hud.js';
 import { createDebugPanel, loadSavedConfig } from './ui/debug.js';
 
@@ -16,6 +17,12 @@ async function main() {
   const renderer = new Renderer(document.getElementById('app'));
   renderer.build(game);
   const input = new MouseInput(renderer.canvas, game, renderer);
+  const touch = new TouchInput(renderer.canvas, game, {
+    joyBase: document.getElementById('touch-joy'),
+    joyKnob: document.getElementById('touch-knob'),
+    swipeZone: document.getElementById('touch-swipe'),
+  });
+  renderer.minimapEl = document.getElementById('minimap-frame');
 
   const actions = {
     restart() {
@@ -46,6 +53,7 @@ async function main() {
     const ticks = stepper.advance(dt);
     if (!debugHooks.paused) for (let i = 0; i < ticks; i++) game.tick();
     input.update();
+    touch.update();
     renderer.fallback = input.fallback;
     renderer.render(game, stepper.alpha, Math.min(dt, 0.1));
     hud.update(input, renderer);

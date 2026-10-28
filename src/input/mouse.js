@@ -17,6 +17,7 @@ export class MouseInput {
     this.locked = false;
     this.lockErrors = 0;
     this.forceAbsolute = false;
+    this.pointerType = 'mouse'; // 마지막 pointerdown의 종류 — 기기가 아니라 실제 입력으로 모드를 정한다
     this.unsupported = !('requestPointerLock' in canvas);
 
     canvas.addEventListener('pointerdown', (e) => this.onPointerDown(e));
@@ -33,9 +34,13 @@ export class MouseInput {
     document.addEventListener('visibilitychange', () => document.hidden && this.interrupt());
   }
 
-  /** Pointer Lock 미지원·반복 실패·강제 설정 시 레인 탑다운 + 절대 좌표 (명세 3.8.1 대체 모드) */
+  get touchMode() {
+    return this.pointerType === 'touch';
+  }
+
+  /** Pointer Lock 미지원·반복 실패·강제 설정 시 레인 탑다운 + 절대 좌표 (명세 3.8.1 대체 모드). 터치는 조이스틱을 쓰므로 해당 없음 */
   get fallback() {
-    return this.unsupported || this.forceAbsolute || this.lockErrors >= 3;
+    return !this.touchMode && (this.unsupported || this.forceAbsolute || this.lockErrors >= 2);
   }
 
   get sweeping() {
@@ -43,10 +48,11 @@ export class MouseInput {
   }
 
   get needsLock() {
-    return this.sweeping && !this.fallback && !this.locked;
+    return this.sweeping && !this.touchMode && !this.fallback && !this.locked;
   }
 
   onPointerDown(e) {
+    this.pointerType = e.pointerType;
     if (!AIM_STATES.has(this.game.state) || e.button !== 0) return;
     this.canvas.setPointerCapture(e.pointerId);
     const st = this.game.state;
@@ -84,7 +90,7 @@ export class MouseInput {
     if (!d) return;
     this.drag = null;
     if (this.canvas.hasPointerCapture(e.pointerId)) this.canvas.releasePointerCapture(e.pointerId);
-    if (d.kind === 'power' && this.game.release()) this.requestLock();
+    if (d.kind === 'power' && this.game.release() && e.pointerType === 'mouse') this.requestLock();
   }
 
   aimAt(e) {
@@ -93,7 +99,7 @@ export class MouseInput {
   }
 
   onMouseDown(e) {
-    if (!this.sweeping) return;
+    if (!this.sweeping || this.touchMode) return;
     e.preventDefault();
     if (this.needsLock) {
       this.requestLock(); // 재개 클릭은 스트로크로 세지 않는다
@@ -103,7 +109,7 @@ export class MouseInput {
   }
 
   onMouseMove(e) {
-    if (!this.sweeping) return;
+    if (!this.sweeping || this.touchMode) return;
     if (this.locked) this.game.enqueue({ type: 'move', dx: e.movementX, dy: e.movementY });
     else if (this.fallback) {
       const p = this.renderer.screenToGround(e.clientX, e.clientY);

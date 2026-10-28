@@ -40,6 +40,7 @@ export class Game {
     this.sweep = new SweepController(this.cfg);
     this.burnMon = new BurnMonitor(this.cfg);
     this.queue = [];
+    this.joy = { x: 0, y: 0 }; // 터치 조이스틱 기울기 (-1..1, y+ = 진행 방향)
     this.checkpoint = null;
     this.burn = null;
     this.burnTimer = 0;
@@ -157,6 +158,7 @@ export class Game {
     this.burnMon.reset();
     this.resetCharacter();
     this.queue.length = 0;
+    this.joy = { x: 0, y: 0 };
     this.state = 'SWEEP';
   }
 
@@ -182,7 +184,15 @@ export class Game {
     for (const ev of events) {
       if (ev.type === 'move') this.character.moveTargetBy(ev.dx * sens, -ev.dy * sens * this.cfg.forwardSensitivityScale, this.bounds);
       else if (ev.type === 'moveAbs') this.character.setTarget(ev.x, ev.y, this.bounds);
+      else if (ev.type === 'joy') this.joy = { x: ev.x, y: ev.y };
       else if (ev.type === 'press' && this.state === 'SWEEP') this.sweep.press(ev.button, this.tickCount);
+    }
+
+    // 조이스틱: 기울이는 동안만 목표점이 움직이고, 놓으면 그 자리(월드 고정)에 멈춘다. 틱 단위로 적분.
+    const jm = Math.min(1, Math.hypot(this.joy.x, this.joy.y));
+    if (jm > 0) {
+      const k = (Math.pow(jm, this.cfg.joyCurve) / jm) * this.cfg.joyMaxSpeed * dt;
+      this.character.moveTargetBy(this.joy.x * k, this.joy.y * k, this.bounds);
     }
 
     const moving = this.sim.movingStones();
@@ -271,6 +281,7 @@ export class Game {
     this.sim.restore(checkpoint.stones);
     for (const saved of checkpoint.parts) Object.assign(this.parts.find((p) => p.id === saved.id), saved);
     const part = this.parts.find((p) => p.id === checkpoint.partId);
+    this.joy = { x: 0, y: 0 };
     this.sweep.reset();
     this.burnMon.reset();
     this.resetCharacter();

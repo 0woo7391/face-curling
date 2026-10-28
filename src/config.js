@@ -35,11 +35,14 @@ export const DEFAULTS = Object.freeze({
   charStartAhead: 2.0, // 투구 시 캐릭터가 스톤보다 앞에서 출발하는 거리
   mouseSensitivity: 0.02, // Pointer Lock 이동량 1px당 월드 이동량 (가로)
   forwardSensitivityScale: 1.5, // 진행 방향 감도 배율 — 레인 전체를 따라가는 마우스 이동량을 줄임
+  joyMaxSpeed: 7, // 터치 조이스틱을 끝까지 기울였을 때 목표점 이동 속도
+  joyCurve: 1.8, // 조이스틱 반응 곡선 (1 = 선형, 클수록 살짝 기울일 때 더 느림)
   bodyJudgeRadius: 0.22,
   broomReach: 0.75, // 몸 중심 ↔ 빗자루 머리 가로 거리
   broomVisualRadius: 0.16,
   strokeAmp: 0.12, // 밀기/당기기 왕복 거리
   strokeDurationMs: 110,
+  strokeBufferMs: 100, // 스트로크가 끝나기 이만큼 전에 들어온 다음 스트로크는 버리지 않고 이어서 시작
   strokeWindowMs: 750,
   strokesForFullInput: 6, // 윈도 안 유효 스트로크가 이만큼이면 입력 효율 100%
   sweepZoneLength: 0.9,

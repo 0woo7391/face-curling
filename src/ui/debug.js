@@ -51,7 +51,8 @@ const FOLDERS = [
 ];
 
 export function createDebugPanel(cfg, renderer, input, actions) {
-  const gui = new GUI({ title: '디버그 · 튜닝' });
+  const narrow = window.matchMedia('(orientation: portrait)').matches;
+  const gui = new GUI({ title: narrow ? '튜닝' : '디버그 · 튜닝', width: narrow ? 220 : 245 });
   gui.close();
   const stats = {
     상태: '', 틱: 0, 충돌수: 0, 번드_몸: 0, 번드_빗자루: 0, 투구수: 0,

@@ -10,9 +10,9 @@
   color-scheme: dark;
 }
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; overflow: hidden; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; }
+html, body { margin: 0; height: 100%; overflow: hidden; overscroll-behavior: none; -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; background: var(--bg); color: var(--text); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; }
 #app { position: fixed; inset: 0; }
-#app canvas { display: block; }
+#app canvas { display: block; touch-action: none; }
 #loading { position: fixed; inset: 0; display: grid; place-items: center; font-size: 18px; }
 #hud { position: fixed; inset: 0; pointer-events: none; }
 #hud button, #hud select, #hud label, #result, #help, #parts { pointer-events: auto; }
@@ -70,7 +70,7 @@ kbd { background: #2b3a4d; border: 1px solid #55697f; border-radius: 4px; paddin
 
 #minimap-frame { position: absolute; left: 12px; bottom: 112px; width: 230px; height: 230px; border: 2px solid #55697f; border-radius: 6px; }
 #minimap-frame span { position: absolute; top: -20px; left: 0; font-size: 12px; color: var(--muted); }
-#minimap-frame[hidden], #offscreen[hidden] { display: none; }
+#offscreen[hidden] { display: none; }
 #offscreen { position: absolute; transform: translate(-50%, -50%); padding: 3px 9px; border-radius: 12px; background: #00838f; font-size: 12px; font-weight: 700; white-space: nowrap; }
 #log { position: absolute; left: 254px; bottom: 112px; color: var(--muted); font-size: 12px; }
 
@@ -81,8 +81,52 @@ kbd { background: #2b3a4d; border: 1px solid #55697f; border-radius: 4px; paddin
 
 .lil-gui.root { top: 48px !important; }
 
-@media (max-width: 760px) {
-  #topbar { padding-right: 14px; flex-wrap: wrap; }
-  #parts { top: auto; bottom: 120px; width: 170px; }
-  #sweep-panel { width: 230px; }
+/* ── 터치 조작 표시 ── */
+#touch-swipe, #touch-move-hint { display: none; }
+#hud[data-input="touch"][data-state="SWEEP"] #touch-swipe,
+#hud[data-input="touch"][data-state="SETTLING"] #touch-swipe { display: flex; }
+#hud[data-input="touch"][data-state="SWEEP"] #touch-move-hint,
+#hud[data-input="touch"][data-state="SETTLING"] #touch-move-hint { display: block; }
+#touch-swipe { position: absolute; right: 10px; bottom: calc(86px + env(safe-area-inset-bottom)); width: calc(50% - 20px); height: 30%; flex-direction: column; justify-content: space-between; align-items: center; padding: 10px 0; border: 2px dashed rgba(255, 255, 255, 0.28); border-radius: 16px; color: rgba(255, 255, 255, 0.7); font-size: 13px; transition: background 0.08s; }
+#touch-swipe b { font-size: 12px; font-weight: 600; color: rgba(255, 255, 255, 0.5); }
+#touch-swipe[data-flash="push"] { background: rgba(102, 187, 106, 0.28); }
+#touch-swipe[data-flash="pull"] { background: rgba(79, 195, 247, 0.28); }
+#touch-move-hint { position: absolute; left: 34px; bottom: calc(96px + env(safe-area-inset-bottom) + 10%); color: rgba(255, 255, 255, 0.55); font-size: 13px; text-align: left; }
+#touch-joy { position: absolute; width: 112px; height: 112px; margin: -56px 0 0 -56px; border-radius: 50%; border: 2px solid rgba(255, 255, 255, 0.45); background: rgba(255, 255, 255, 0.08); }
+#touch-joy[hidden] { display: none; }
+#touch-knob { position: absolute; left: 32px; top: 32px; width: 48px; height: 48px; border-radius: 50%; background: rgba(0, 229, 255, 0.75); }
+
+/* ── 세로 화면 (기본) ── */
+@media (orientation: portrait) {
+  #topbar { padding: calc(6px + env(safe-area-inset-top)) 10px 6px; gap: 8px; flex-wrap: wrap; font-size: 12px; }
+  #topbar strong { display: none; }
+  #status { flex-basis: 100%; order: -1; }
+  #topbar .spacer { display: none; }
+  #topbar button, #topbar select { padding: 4px 8px; font-size: 12px; }
+  .lil-gui.root { top: calc(4px + env(safe-area-inset-top)) !important; right: 4px !important; }
+  .lil-gui.root.closed { width: 64px !important; }
+  #status { padding-right: 70px; }
+
+  /* 부위 선택: 하단 3×2 격자 */
+  #parts { top: auto; right: 8px; left: 8px; bottom: calc(96px + env(safe-area-inset-bottom)); width: auto; display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; padding: 6px; }
+  #parts h3 { display: none; }
+  .part { grid-template-columns: 10px 1fr auto; margin: 0; padding: 8px 6px; font-size: 13px; }
+  .part .st { display: none; }
+  .part i { width: 10px; height: 10px; }
+  #hud:not([data-state="PART_SELECT"]):not([data-state="RESULT"]) #parts { display: none; }
+
+  /* 스위핑 정보: 상단, 미니맵 왼쪽 */
+  #sweep-panel { top: calc(68px + env(safe-area-inset-top)); left: 8px; width: calc(100% - 136px); padding: 6px 8px; gap: 3px; font-size: 11px; }
+  .meter { grid-template-columns: 64px 1fr; white-space: nowrap; }
+  #rate, #stone-info { display: none; }
+  #minimap-frame { left: auto; right: 8px; bottom: auto; top: calc(68px + env(safe-area-inset-top)); width: 116px; height: 116px; }
+  #minimap-frame span { top: auto; bottom: -18px; }
+  #log { left: 8px; bottom: calc(96px + env(safe-area-inset-bottom) + 32%); font-size: 11px; }
+
+  #bottom { padding: 10px 10px calc(12px + env(safe-area-inset-bottom)); }
+  #instruction { font-size: 13px; }
+  #controls button { padding: 12px 22px; font-size: 16px; }
+  #result { top: calc(68px + env(safe-area-inset-top)); left: 8px; right: 8px; width: auto; padding: 12px 14px; font-size: 13px; }
+  #banner { font-size: 22px; top: 38%; }
+  #help { font-size: 13px; }
 }

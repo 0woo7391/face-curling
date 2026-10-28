@@ -2,7 +2,8 @@
 <html lang="ko">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#18202c" />
     <title>Face Curling POC A</title>
     <link rel="stylesheet" href="./src/style.css" />
   </head>
@@ -46,7 +47,10 @@
         <div id="warn"></div>
       </section>
 
-      <div id="minimap-frame" hidden><span>보드</span></div>
+      <div id="minimap-frame"><span>보드</span></div>
+      <div id="touch-swipe"><span>↑ 밀기</span><b>위아래로 문지르기</b><span>↓ 당기기</span></div>
+      <div id="touch-move-hint">왼쪽을 누르고 끌어서<br />캐릭터 이동</div>
+      <div id="touch-joy" hidden><div id="touch-knob"></div></div>
       <div id="offscreen" hidden></div>
       <div id="banner" hidden></div>
       <div id="lock-overlay" hidden>

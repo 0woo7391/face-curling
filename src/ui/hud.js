@@ -21,6 +21,7 @@ const STATUS_LABEL = { pending: '미투구', moving: '이동 중', stopped: '정
 const REJECT_LABEL = {
   'rejected-order': '순서 틀림',
   'rejected-busy': '너무 빠름',
+  buffered: '예약됨',
 };
 
 export class Hud {
@@ -65,6 +66,9 @@ export class Hud {
     const g = this.game;
     const st = g.state;
     const part = g.currentPart;
+    const hud = $('hud');
+    hud.dataset.state = st; // 세로 레이아웃에서 상태별로 패널을 숨기는 데 사용
+    hud.dataset.input = input.touchMode ? 'touch' : 'mouse';
     this.set('status', $('status'), `${g.mode === 'record' ? '기록' : '연습'} 모드 · 투구 ${g.throwIndex}/6 · ${STATE_LABEL[st]}${part ? ` · ${part.label}` : ''}`);
     this.set('modeSel', $('mode'), g.mode, 'value');
 
@@ -89,7 +93,7 @@ export class Hud {
     $('undo').hidden = !(g.mode === 'practice' && g.checkpoint && (st === 'PART_SELECT' || st === 'RESULT'));
 
     this.updateSweep();
-    $('minimap-frame').hidden = !renderer.minimapVisible;
+    $('minimap-frame').style.visibility = renderer.minimapVisible ? 'visible' : 'hidden';
     this.updateOffscreen(renderer);
     this.updateBanner();
     $('lock-overlay').hidden = !input.needsLock;
@@ -103,7 +107,7 @@ export class Hud {
       case 'PART_SELECT':
         return '오른쪽 목록에서 던질 부위를 고르세요. <b>턱이 투구자 쪽</b>이라 입·코가 앞을 막습니다 — 먼 쪽(눈썹·눈)부터 던지는 게 유리합니다.';
       case 'AIM':
-        return `레인을 <b>클릭·드래그</b>해 방향을 정하세요 (±${g.cfg.maxAimDeg}°). 현재 ${((g.aimAngle * 180) / Math.PI).toFixed(1)}° · 초록 점선 = 스위핑·충돌 없는 예상 경로`;
+        return `레인을 <b>${input.touchMode ? '누르고 끌어서' : '클릭·드래그해'}</b> 방향을 정하세요 (±${g.cfg.maxAimDeg}°). 현재 ${((g.aimAngle * 180) / Math.PI).toFixed(1)}° · 초록 점선 = 스위핑·충돌 없는 예상 경로`;
       case 'SPIN': {
         const dir = g.spin > 0.005 ? '시계 → 오른쪽으로 휨' : g.spin < -0.005 ? '반시계 → 왼쪽으로 휨' : '무회전';
         return `스톤 주위를 <b>원을 그리며 드래그</b>해 회전을 정하세요. 현재 <b>${(Math.abs(g.spin) * 100).toFixed(0)}% · ${dir}</b>`;
@@ -111,6 +115,7 @@ export class Hud {
       case 'POWER':
         return `아무 곳이나 <b>누른 채 아래로 당기고 놓으면 발사</b>. 거의 안 당기고 놓으면 취소. 파워 <b>${(g.power * 100).toFixed(0)}%</b>`;
       case 'SWEEP':
+        if (input.touchMode) return '<b>왼쪽</b> 누르고 끌기 = 캐릭터 이동 · <b>오른쪽</b> 위아래 문지르기 = 밀기/당기기 · 몸·빗자루가 스톤에 닿으면 BURNED';
         return input.fallback
           ? '대체 모드(절대 좌표): 커서 위치 = 캐릭터 목표 · <b>좌클릭 밀기 → 우클릭 당기기</b> 교대'
           : '마우스 이동 = 캐릭터 목표(<b>월드 고정</b>) · <b>좌클릭 밀기 → 우클릭 당기기</b> 교대 · 몸·빗자루가 움직이는 스톤에 닿으면 BURNED · <kbd>T</kbd> 레인 탑다운';
@@ -136,7 +141,9 @@ export class Hud {
     bar('bar-pos', g.frame.posEff);
     this.set('rhythm', $('rhythm'), sw.history.map((h) => `<b class="${h.valid ? 'ok' : 'no'}">${h.kind === 'push' ? '밀' : '당'}</b>`).join(''), 'innerHTML');
     const reject = REJECT_LABEL[sw.lastResult];
-    this.set('nextInput', $('next-input'), `다음: ${sw.expect === 'push' ? '좌클릭 (밀기)' : '우클릭 (당기기)'}${reject ? ` · 직전 입력 ${reject}` : ''}`);
+    const touch = $('hud').dataset.input === 'touch';
+    const nextLabel = sw.expect === 'push' ? (touch ? '위로 (밀기)' : '좌클릭 (밀기)') : touch ? '아래로 (당기기)' : '우클릭 (당기기)';
+    this.set('nextInput', $('next-input'), `다음: ${nextLabel}${reject ? ` · 직전 입력 ${reject}` : ''}`);
     this.set('rate', $('rate'), `${sw.roundTripsPerSecond().toFixed(1)} 왕복/초`);
 
     const s = g.currentStone;

@@ -48,7 +48,9 @@ export class Renderer {
   constructor(container) {
     this.container = container;
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
-    this.renderer.setPixelRatio(Math.min(2, window.devicePixelRatio));
+    // 터치 기기는 픽셀 비율을 낮춰 프레임 확보
+    const coarse = window.matchMedia?.('(pointer: coarse)').matches;
+    this.renderer.setPixelRatio(Math.min(coarse ? 1.5 : 2, window.devicePixelRatio));
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
     this.canvas = this.renderer.domElement;
     container.appendChild(this.canvas);
@@ -60,7 +62,7 @@ export class Renderer {
     this.options = { showSensors: true, showPath: true, showGhosts: true, showMinimap: true, laneTop: false };
     this.fallback = false; // Pointer Lock 불가 → 레인 탑다운 고정
     this.miniCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 300);
-    this.minimap = { size: 230, left: 12, bottom: 112 }; // CSS px, #minimap-frame과 일치
+    this.minimapEl = null; // 미니맵을 그릴 위치는 HUD의 #minimap-frame 요소 위치를 따른다
     this.raycaster = new THREE.Raycaster();
     this.ground = new THREE.Plane(UP_Y, 0);
     window.addEventListener('resize', () => this.resize());
@@ -71,7 +73,14 @@ export class Renderer {
     const w = this.container.clientWidth;
     const h = this.container.clientHeight;
     this.renderer.setSize(w, h);
+    this.portrait = h > w;
     this.persp.aspect = w / h;
+    // 세로 화면: 가로 시야가 좁아지므로 FOV를 넓히고, 아래쪽 조작 영역(엄지)을 피해 화면 중심을 위로 올린다
+    this.persp.fov = this.portrait ? 68 : 50;
+    for (const cam of [this.persp, this.ortho]) {
+      if (this.portrait) cam.setViewOffset(w, h, 0, h * 0.16, w, h);
+      else cam.clearViewOffset();
+    }
     this.persp.updateProjectionMatrix();
   }
 
@@ -235,7 +244,9 @@ export class Renderer {
 
   // ── 카메라 (명세 4장, v1.1) ──
 
-  overhead(cx, cy, halfH) {
+  /** halfW: 가로로 반드시 보여야 하는 반폭 — 세로 화면에서 잘리지 않게 */
+  overhead(cx, cy, halfH, halfW = 0) {
+    halfH = Math.max(halfH, halfW / this.persp.aspect);
     const H = halfH / Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2));
     return { pos: V(cx, cy, H), look: V(cx, cy, 0), up: UP_TOP, ortho: true, halfH, speed: 4 };
   }
@@ -243,12 +254,12 @@ export class Renderer {
   cameraGoal(game) {
     const { cfg } = game;
     const st = game.state;
-    if (st === 'PART_SELECT' || st === 'RESULT') return this.overhead(0, cfg.boardCenterY, cfg.boardSize * 0.62);
+    if (st === 'PART_SELECT' || st === 'RESULT') return this.overhead(0, cfg.boardCenterY, cfg.boardSize * 0.62, cfg.boardSize * 0.56);
     if (st === 'AIM' || st === 'SPIN' || st === 'POWER') {
       return { pos: V(0, LAUNCH.y - 5, 4.2), look: V(0, LAUNCH.y + 9, 0), up: UP_Y, ortho: false, speed: 4 };
     }
     if (this.options.laneTop || this.fallback) {
-      return this.overhead(0, (cfg.laneLength + cfg.backLimitY) / 2, (cfg.laneLength - cfg.backLimitY) / 2 + 0.4);
+      return this.overhead(0, (cfg.laneLength + cfg.backLimitY) / 2, (cfg.laneLength - cfg.backLimitY) / 2 + 0.4, cfg.laneWidth / 2 + 0.4);
     }
     // 스위핑 추적: 스톤과 캐릭터 사이 (명세 4장 [제안])
     const stone = game.currentStone ?? game.sim.movingStones()[0];
@@ -368,12 +379,15 @@ export class Renderer {
 
     this.renderer.render(this.scene, this.active);
     this.minimapVisible = this.options.showMinimap && ['AIM', 'SPIN', 'POWER', 'SWEEP', 'SETTLING', 'BURN_RESOLVE'].includes(game.state);
-    if (this.minimapVisible) this.renderMinimap(cfg);
+    if (this.minimapVisible && this.minimapEl) this.renderMinimap(cfg, this.minimapEl.getBoundingClientRect());
   }
 
   /** 투구·스위핑 중 목표 보드를 탑다운으로 보여주는 인셋 */
-  renderMinimap(cfg) {
-    const { size, left, bottom } = this.minimap;
+  renderMinimap(cfg, rect) {
+    const size = Math.round(rect.width);
+    const left = Math.round(rect.left);
+    const bottom = Math.round(this.container.clientHeight - rect.bottom);
+    if (size <= 0) return;
     const half = cfg.boardSize * 0.58;
     Object.assign(this.miniCam, { left: -half, right: half, top: half, bottom: -half });
     this.miniCam.updateProjectionMatrix();
