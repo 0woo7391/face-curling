@@ -1,47 +1,61 @@
 // Three.js 표현 계층 (명세 4장). 게임 상태를 읽기만 하고 바꾸지 않는다.
 // 2D 물리 (x, y) ↔ 3D (X, Y=높이, Z) 단일 매핑: X = x, Z = -y.
+//
+// 피드백 원칙 (사용자 결정):
+// - 글자 대신 크기·두께·색·소리로 '내 입력에 대한 반응'을 보여준다.
+// - 어디에 두라는 정답 안내(예상 경로 점선, 멈출 곳 표시, 빗자루 위치 가이드, 정답 유령 표시)는 기본으로 보여주지 않는다.
 import * as THREE from 'three';
 import { FACE_BOX } from '../core/board.js';
 import { LAUNCH } from '../core/game.js';
 import { broomJudgeRadius } from '../core/sweep.js';
 import { faceBoardTexture, puckTexture, labelTexture } from './textures.js';
+import { Fx } from './fx.js';
 
 const V = (x, y, h = 0) => new THREE.Vector3(x, h, -y);
 const UP_Y = new THREE.Vector3(0, 1, 0);
 const UP_TOP = new THREE.Vector3(0, 0, -1); // 탑다운에서 화면 위 = 레인 진행 방향
 const lerp = (a, b, t) => a + (b - a) * t;
+const C = {
+  broom: new THREE.Color('#5c6bc0'),
+  good: new THREE.Color('#76ff03'),
+  caution: new THREE.Color('#ffd600'),
+  danger: new THREE.Color('#ff1744'),
+  low: new THREE.Color('#4dd0e1'),
+  powerLo: new THREE.Color('#66bb6a'),
+  powerMid: new THREE.Color('#ffd600'),
+  powerHi: new THREE.Color('#ff3d00'),
+};
+
+const basic = (color, opacity = 1) =>
+  new THREE.MeshBasicMaterial({ color, transparent: opacity < 1, opacity, depthWrite: opacity >= 1, side: THREE.DoubleSide, toneMapped: false });
 
 function flatRing(inner, outer, color, opacity, segments = 48) {
-  const m = new THREE.Mesh(
-    new THREE.RingGeometry(inner, outer, segments),
-    new THREE.MeshBasicMaterial({ color, transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }),
-  );
+  const m = new THREE.Mesh(new THREE.RingGeometry(inner, outer, segments), basic(color, opacity));
   m.rotation.x = -Math.PI / 2;
   return m;
 }
 
-function line(color, maxPoints, dashed = false) {
-  const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.BufferAttribute(new Float32Array(maxPoints * 3), 3));
-  geo.setDrawRange(0, 0);
-  const mat = dashed
-    ? new THREE.LineDashedMaterial({ color, dashSize: 0.25, gapSize: 0.18, transparent: true, opacity: 0.9 })
-    : new THREE.LineBasicMaterial({ color });
-  return new THREE.Line(geo, mat);
+/** 바닥에 눕힌 단위 사각형. placeStrip으로 두 점 사이에 늘인다 */
+function flatStrip(color, opacity = 1) {
+  const geo = new THREE.PlaneGeometry(1, 1);
+  geo.rotateX(-Math.PI / 2); // 길이 방향 = 로컬 Z
+  return new THREE.Mesh(geo, basic(color, opacity));
 }
 
-function setLine(l, pts, h = 0.02) {
-  const arr = l.geometry.attributes.position.array;
-  const n = Math.min(pts.length, arr.length / 3);
-  for (let i = 0; i < n; i++) {
-    arr[i * 3] = pts[i].x;
-    arr[i * 3 + 1] = h;
-    arr[i * 3 + 2] = -pts[i].y;
-  }
-  l.geometry.attributes.position.needsUpdate = true;
-  l.geometry.setDrawRange(0, n);
-  l.geometry.computeBoundingSphere();
-  if (l.material.isLineDashedMaterial) l.computeLineDistances();
+function placeStrip(mesh, a, b, width, h = 0.02) {
+  const dx = b.x - a.x;
+  const dy = b.y - a.y;
+  const len = Math.hypot(dx, dy);
+  mesh.position.copy(V((a.x + b.x) / 2, (a.y + b.y) / 2, h));
+  mesh.scale.set(width, 1, Math.max(1e-4, len));
+  mesh.rotation.y = -Math.atan2(dx, dy);
+}
+
+function flatTriangle(color, halfWidth, length) {
+  const shape = new THREE.Shape([new THREE.Vector2(-halfWidth, 0), new THREE.Vector2(halfWidth, 0), new THREE.Vector2(0, length)]);
+  const geo = new THREE.ShapeGeometry(shape);
+  geo.rotateX(-Math.PI / 2); // 꼭짓점 = 로컬 -Z = 월드 +y
+  return new THREE.Mesh(geo, basic(color));
 }
 
 export class Renderer {
@@ -59,12 +73,14 @@ export class Renderer {
     this.ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 300);
     this.active = this.persp;
     this.rig = { pos: new THREE.Vector3(0, 6, 4), look: new THREE.Vector3(0, 0, -10), up: UP_Y.clone() };
-    this.options = { showSensors: true, showPath: true, showGhosts: true, showMinimap: true, laneTop: false };
+    // showGhosts·showSensors는 디버그용 (정답 위치·판정 원 노출)
+    this.options = { showSensors: false, showGhosts: false, showMinimap: true, laneTop: false };
     this.fallback = false; // Pointer Lock 불가 → 레인 탑다운 고정
     this.miniCam = new THREE.OrthographicCamera(-1, 1, 1, -1, 0.05, 300);
     this.minimapEl = null; // 미니맵을 그릴 위치는 HUD의 #minimap-frame 요소 위치를 따른다
     this.raycaster = new THREE.Raycaster();
     this.ground = new THREE.Plane(UP_Y, 0);
+    this.time = 0;
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -95,110 +111,124 @@ export class Renderer {
     const sun = new THREE.DirectionalLight(0xffffff, 1.4);
     sun.position.set(4, 12, 6);
     scene.add(sun);
+    this.buildRink(game);
 
-    const len = cfg.laneLength - cfg.backLimitY;
-    const midY = (cfg.laneLength + cfg.backLimitY) / 2;
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, len + 20), new THREE.MeshStandardMaterial({ color: '#2a3442' }));
-    floor.rotation.x = -Math.PI / 2;
-    floor.position.copy(V(0, midY, -0.01));
-    scene.add(floor);
-
-    const ice = new THREE.Mesh(
-      new THREE.PlaneGeometry(cfg.laneWidth, len),
-      new THREE.MeshStandardMaterial({ color: '#eef5fa', roughness: 0.35, metalness: 0 }),
-    );
-    ice.rotation.x = -Math.PI / 2;
-    ice.position.copy(V(0, midY, 0));
-    scene.add(ice);
-
-    for (const sx of [-1, 1]) {
-      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.12, 0.18, len), new THREE.MeshStandardMaterial({ color: '#90a4ae' }));
-      wall.position.copy(V(sx * (cfg.laneWidth / 2 + 0.06), midY, 0.09));
-      scene.add(wall);
-    }
-    const stripe = (y, color) => {
-      const m = new THREE.Mesh(new THREE.PlaneGeometry(cfg.laneWidth, 0.05), new THREE.MeshBasicMaterial({ color }));
-      m.rotation.x = -Math.PI / 2;
-      m.position.copy(V(0, y, 0.003));
-      scene.add(m);
-    };
-    stripe(0, '#d32f2f');
-    stripe(cfg.laneLength, '#1565c0');
-
-    const B = cfg.boardSize;
-    const board = new THREE.Mesh(new THREE.PlaneGeometry(B, B), new THREE.MeshStandardMaterial({ map: faceBoardTexture(FACE_BOX), roughness: 0.6 }));
-    board.rotation.x = -Math.PI / 2;
-    board.position.copy(V(0, cfg.boardCenterY, 0.004));
-    scene.add(board);
-
-    // 정답 위치 유령 표시 (명세 3.6)
+    // 정답 위치 (디버그 전용)
     this.ghosts = new THREE.Group();
     const r = cfg.stoneRadius;
     for (const p of game.parts) {
       const w = game.board.qToWorld(p.q);
       const ring = flatRing(r * 0.92, r * 1.08, p.color, 0.75);
       ring.position.copy(V(w.x, w.y, 0.006));
-      this.ghosts.add(ring);
-      const dot = flatRing(0, 0.02, p.color, 0.9, 12);
-      dot.position.copy(V(w.x, w.y, 0.006));
-      this.ghosts.add(dot);
       const label = new THREE.Sprite(new THREE.SpriteMaterial({ map: labelTexture(p.label, p.color), depthTest: false }));
       label.scale.set(0.62, 0.175, 1);
-      // 왼쪽 부위는 바깥 왼쪽, 오른쪽·가운데 부위는 오른쪽에 라벨 (위아래 부위와 겹치지 않게)
-      const lx = p.side === 'L' ? -0.55 : 0.55;
-      label.position.copy(V(w.x + lx, w.y, 0.15));
-      this.ghosts.add(label);
+      label.position.copy(V(w.x + (p.side === 'L' ? -0.55 : 0.55), w.y, 0.15));
+      this.ghosts.add(ring, label);
     }
     scene.add(this.ghosts);
 
-    // 스톤
     this.stoneMeshes = new Map();
     this.puckTextures = new Map(game.parts.map((p) => [p.id, puckTexture(p)]));
+    this.buildThrowFeedback(game);
+    this.buildCharacter();
+    this.buildSweepFeedback(game);
+    this.buildDebugSensors(game);
+    this.fx = new Fx(scene);
+  }
 
-    // 투구 준비 표시
-    this.pathLine = line('#2e7d32', 1024, true);
-    this.aimLine = line('#ffb300', 2);
-    this.powerLine = line('#e53935', 2);
-    this.spinArc = null;
+  buildRink(game) {
+    const { cfg } = game;
+    const scene = this.scene;
+    const len = cfg.laneLength - cfg.backLimitY;
+    const midY = (cfg.laneLength + cfg.backLimitY) / 2;
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(40, len + 20), new THREE.MeshStandardMaterial({ color: '#2a3442' }));
+    floor.rotation.x = -Math.PI / 2;
+    floor.position.copy(V(0, midY, -0.01));
+    const ice = new THREE.Mesh(new THREE.PlaneGeometry(cfg.laneWidth, len), new THREE.MeshStandardMaterial({ color: '#eef5fa', roughness: 0.35 }));
+    ice.rotation.x = -Math.PI / 2;
+    ice.position.copy(V(0, midY, 0));
+    scene.add(floor, ice);
+    for (const sx of [-1, 1]) {
+      const wall = new THREE.Mesh(new THREE.BoxGeometry(0.16, 0.22, len), new THREE.MeshStandardMaterial({ color: sx < 0 ? '#e53935' : '#1e88e5' }));
+      wall.position.copy(V(sx * (cfg.laneWidth / 2 + 0.08), midY, 0.11));
+      scene.add(wall);
+    }
+    const stripe = (y, color) => {
+      const m = new THREE.Mesh(new THREE.PlaneGeometry(cfg.laneWidth, 0.05), basic(color));
+      m.rotation.x = -Math.PI / 2;
+      m.position.copy(V(0, y, 0.003));
+      scene.add(m);
+    };
+    stripe(0, '#d32f2f');
+    stripe(cfg.laneLength, '#1565c0');
+    const B = cfg.boardSize;
+    const board = new THREE.Mesh(new THREE.PlaneGeometry(B, B), new THREE.MeshStandardMaterial({ map: faceBoardTexture(FACE_BOX), roughness: 0.6 }));
+    board.rotation.x = -Math.PI / 2;
+    board.position.copy(V(0, cfg.boardCenterY, 0.004));
+    scene.add(board);
+  }
+
+  /** 투구 준비: 방향 화살표(파워에 따라 길어짐), 회전 호(세기에 따라 두꺼워짐), 새총 밴드 */
+  buildThrowFeedback(game) {
     this.previewStone = this.makeStone(game.parts[0]);
-    scene.add(this.pathLine, this.aimLine, this.powerLine, this.previewStone);
+    this.aim = new THREE.Group();
+    this.aimShaft = flatStrip('#ffd54f');
+    this.aimHead = flatTriangle('#ffd54f', 0.16, 0.3);
+    this.aim.add(this.aimShaft, this.aimHead);
+    this.bands = [flatStrip('#66bb6a'), flatStrip('#66bb6a')];
+    this.posts = [-1, 1].map(() => {
+      const m = new THREE.Mesh(new THREE.CylinderGeometry(0.035, 0.035, 0.22, 12), new THREE.MeshStandardMaterial({ color: '#455a64' }));
+      return m;
+    });
+    this.spinArc = null;
+    this.spinHead = flatTriangle('#ff7043', 0.07, 0.13);
+    this.scene.add(this.previewStone, this.aim, ...this.bands, ...this.posts, this.spinHead);
+  }
 
-    // 캐릭터
+  buildCharacter() {
     this.character = new THREE.Group();
-    const bodyMat = new THREE.MeshStandardMaterial({ color: '#5e35b1' });
-    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 1.0, 20), bodyMat);
+    const body = new THREE.Mesh(new THREE.CylinderGeometry(0.17, 0.2, 1.0, 20), new THREE.MeshStandardMaterial({ color: '#5e35b1' }));
     body.position.y = 0.5;
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.15, 20, 14), new THREE.MeshStandardMaterial({ color: '#f1c9a5' }));
     head.position.y = 1.18;
-    this.character.add(body, head);
+    const hat = new THREE.Mesh(new THREE.SphereGeometry(0.155, 20, 10, 0, Math.PI * 2, 0, Math.PI / 2), new THREE.MeshStandardMaterial({ color: '#e53935' }));
+    hat.position.y = 1.2;
+    this.character.add(body, head, hat);
     this.stick = new THREE.Mesh(new THREE.CylinderGeometry(0.015, 0.015, 1, 8), new THREE.MeshStandardMaterial({ color: '#795548' }));
-    this.broomHead = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.1), new THREE.MeshStandardMaterial({ color: '#c62828' }));
-    scene.add(this.character, this.stick, this.broomHead);
+    this.broomMat = new THREE.MeshBasicMaterial({ color: C.broom.clone(), toneMapped: false });
+    this.broomHead = new THREE.Mesh(new THREE.BoxGeometry(0.3, 0.05, 0.1), this.broomMat);
+    this.target = flatRing(0.08, 0.11, '#00e5ff', 0.8, 24); // 내 마우스/조이스틱 목표점
+    this.scene.add(this.character, this.stick, this.broomHead, this.target);
+  }
 
-    // 판정·센서 시각화 (명세 3.8.2)
+  /** 스위핑 반응: 스톤 둘레 강도 고리, 스톤 앞 얼음 녹는 띠, 위험할 때만 나타나는 경고 고리 */
+  buildSweepFeedback(game) {
+    const { cfg } = game;
+    const r = cfg.stoneRadius;
+    const bj = broomJudgeRadius(cfg);
+    this.intensityRing = flatRing(r * 1.6, r * 2.1, '#76ff03', 0.95, 48);
+    this.melt = flatStrip('#b3e5fc', 0);
+    this.cushionWarn = flatRing(r + bj + cfg.cushionWidth - 0.025, r + bj + cfg.cushionWidth, '#ffd600', 0.9);
+    this.bodyWarn = flatRing(cfg.bodyJudgeRadius + 0.02, cfg.bodyJudgeRadius + 0.07, '#ff1744', 0.9);
+    this.scene.add(this.intensityRing, this.melt, this.cushionWarn, this.bodyWarn);
+  }
+
+  buildDebugSensors(game) {
+    const { cfg } = game;
+    const r = cfg.stoneRadius;
     const bj = broomJudgeRadius(cfg);
     this.sensors = new THREE.Group();
-    this.bodyRing = flatRing(cfg.bodyJudgeRadius - 0.015, cfg.bodyJudgeRadius, '#ffffff', 0.8);
-    this.broomRing = flatRing(bj - 0.012, bj, '#ffffff', 0.9);
-    this.contactRing = flatRing(r + bj - 0.012, r + bj, '#e53935', 0.5);
-    this.cushionRing = flatRing(r + bj + cfg.cushionWidth - 0.012, r + bj + cfg.cushionWidth, '#fdd835', 0.5);
-    this.zone = new THREE.Group();
+    this.dbgBody = flatRing(cfg.bodyJudgeRadius - 0.015, cfg.bodyJudgeRadius, '#ffffff', 0.8);
+    this.dbgBroom = flatRing(bj - 0.012, bj, '#ffffff', 0.9);
+    this.dbgContact = flatRing(r + bj - 0.012, r + bj, '#e53935', 0.6);
+    this.dbgZone = new THREE.Group();
     const zoneLen = cfg.cushionWidth + cfg.sweepZoneLength;
-    const zoneMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(cfg.sweepZoneHalfWidth * 2, zoneLen),
-      new THREE.MeshBasicMaterial({ color: '#43a047', transparent: true, opacity: 0.22, depthWrite: false, side: THREE.DoubleSide }),
-    );
-    zoneMesh.rotation.x = -Math.PI / 2;
-    zoneMesh.position.set(0, 0.005, -(r + bj + zoneLen / 2));
-    this.zone.add(zoneMesh);
-    this.sensors.add(this.bodyRing, this.broomRing, this.contactRing, this.cushionRing, this.zone);
-    scene.add(this.sensors);
-
-    this.targetMarker = new THREE.Group();
-    this.targetMarker.add(flatRing(0.1, 0.13, '#00e5ff', 0.95, 24));
-    const cross = flatRing(0, 0.03, '#00e5ff', 0.95, 12);
-    this.targetMarker.add(cross);
-    scene.add(this.targetMarker);
+    const zone = flatStrip('#43a047', 0.22);
+    zone.scale.set(cfg.sweepZoneHalfWidth * 2, 1, zoneLen);
+    zone.position.set(0, 0.005, -(r + bj + zoneLen / 2));
+    this.dbgZone.add(zone);
+    this.sensors.add(this.dbgBody, this.dbgBroom, this.dbgContact, this.dbgZone);
+    this.scene.add(this.sensors);
   }
 
   makeStone(part) {
@@ -212,7 +242,7 @@ export class Renderer {
     const handle = new THREE.Mesh(new THREE.BoxGeometry(r * 1.3, 0.025, 0.045), new THREE.MeshStandardMaterial({ color: '#263238' }));
     handle.position.y = 0.09;
     // 작은 퍽의 가시성 보강 (명세 5.3) — 판정 크기와 무관
-    const glow = flatRing(r * 1.05, r * 1.5, part.color, 0.55);
+    const glow = flatRing(r * 1.05, r * 1.45, part.color, 0.55);
     glow.position.y = 0.004;
     g.add(base, decal, handle, glow);
     g.userData = { handle, decal, partId: part.id };
@@ -223,6 +253,11 @@ export class Renderer {
     if (this.previewStone.userData.partId === part.id) return;
     this.previewStone.userData.decal.material.map = this.puckTextures.get(part.id);
     this.previewStone.userData.partId = part.id;
+  }
+
+  handleEvents(events, game) {
+    this.fx.handle(events, game);
+    for (const e of events) if (e.type === 'stroke' && e.valid) this.broomPulse = 1;
   }
 
   // ── 좌표 변환 ──
@@ -261,10 +296,9 @@ export class Renderer {
     if (this.options.laneTop || this.fallback) {
       return this.overhead(0, (cfg.laneLength + cfg.backLimitY) / 2, (cfg.laneLength - cfg.backLimitY) / 2 + 0.4, cfg.laneWidth / 2 + 0.4);
     }
-    // 스위핑 추적: 스톤과 캐릭터 사이 (명세 4장 [제안])
+    // 스위핑 추적: 스톤과 캐릭터 사이. 캐릭터가 멀리 뒤처지면 스톤만 따라간다
     const stone = game.currentStone ?? game.sim.movingStones()[0];
     const c = game.character.pos;
-    // 캐릭터가 멀리 뒤처지면 스톤만 따라간다 (캐릭터 위치는 화면 가장자리 표시로 안내)
     const w = stone && Math.hypot(stone.x - c.x, stone.y - c.y) < 4 ? 0.35 : 0;
     const fx = stone ? lerp(stone.x, c.x, w) : c.x;
     const fy = stone ? lerp(stone.y, c.y, w) : c.y;
@@ -286,7 +320,9 @@ export class Renderer {
       Object.assign(this.ortho, { left: -goal.halfH * aspect, right: goal.halfH * aspect, top: goal.halfH, bottom: -goal.halfH });
       this.ortho.updateProjectionMatrix();
     }
-    cam.position.copy(this.rig.pos);
+    // 충돌·발사 순간의 짧은 카메라 펀치 (물리 시간은 멈추지 않는다)
+    const p = this.fx?.punch ?? 0;
+    cam.position.copy(this.rig.pos).add(new THREE.Vector3((Math.random() - 0.5) * p, (Math.random() - 0.5) * p, (Math.random() - 0.5) * p));
     cam.up.copy(this.rig.up);
     cam.lookAt(this.rig.look);
     this.active = cam;
@@ -296,10 +332,21 @@ export class Renderer {
 
   render(game, alpha, dt) {
     const { cfg } = game;
+    this.time += dt;
     this.updateCamera(game, dt);
     this.ghosts.visible = this.options.showGhosts;
+    this.syncStones(game, alpha);
+    this.renderThrowFeedback(game);
+    const charPos = this.renderCharacter(game, alpha, dt);
+    this.renderSweepFeedback(game, alpha, charPos);
+    this.fx.update(dt, game);
 
-    // 스톤 동기화 + 렌더 보간
+    this.renderer.render(this.scene, this.active);
+    this.minimapVisible = this.options.showMinimap && ['AIM', 'SPIN', 'POWER', 'SWEEP', 'SETTLING', 'BURN_RESOLVE'].includes(game.state);
+    if (this.minimapVisible && this.minimapEl) this.renderMinimap(cfg, this.minimapEl.getBoundingClientRect());
+  }
+
+  syncStones(game, alpha) {
     const seen = new Set();
     for (const s of game.sim.stones.values()) {
       seen.add(s.id);
@@ -318,68 +365,177 @@ export class Renderer {
         this.stoneMeshes.delete(id);
       }
     }
+  }
 
-    // 투구 준비
-    const aiming = game.state === 'AIM' || game.state === 'SPIN' || game.state === 'POWER';
-    this.previewStone.visible = aiming;
-    this.pathLine.visible = aiming && this.options.showPath;
-    this.aimLine.visible = aiming;
-    this.powerLine.visible = game.state === 'POWER' && game.power > 0;
-    if (aiming) {
-      this.setPreviewPart(game.currentPart);
-      this.previewStone.position.copy(V(LAUNCH.x, LAUNCH.y));
-      this.previewStone.userData.handle.rotation.y = 0;
-      setLine(this.pathLine, game.predictedPath().points, 0.015);
-      const dx = Math.sin(game.aimAngle);
-      const dy = Math.cos(game.aimAngle);
-      setLine(this.aimLine, [LAUNCH, { x: LAUNCH.x + dx * 3, y: LAUNCH.y + dy * 3 }], 0.03);
-      setLine(this.powerLine, [LAUNCH, { x: LAUNCH.x - dx * game.power * 1.8, y: LAUNCH.y - dy * game.power * 1.8 }], 0.03);
+  renderThrowFeedback(game) {
+    const st = game.state;
+    const aiming = st === 'AIM' || st === 'SPIN' || st === 'POWER';
+    this.previewStone.visible = this.aim.visible = aiming;
+    for (const o of [...this.bands, ...this.posts]) o.visible = st === 'POWER';
+    if (!aiming) {
+      this.updateSpinArc(0, false);
+      return;
     }
-    this.updateSpinArc(aiming ? game.spin : 0, aiming);
+    this.setPreviewPart(game.currentPart);
+    const dx = Math.sin(game.aimAngle);
+    const dy = Math.cos(game.aimAngle);
 
-    // 캐릭터·빗자루
+    // 파워: 스톤이 뒤로 당겨지고, 밴드가 굵어지며 초록→노랑→빨강
+    const pw = st === 'POWER' ? game.power : 0;
+    const pull = pw * 0.9;
+    const stone = { x: LAUNCH.x - dx * pull, y: LAUNCH.y - dy * pull };
+    this.previewStone.position.copy(V(stone.x, stone.y));
+    this.previewStone.userData.handle.rotation.y = 0;
+    const powerColor = pw < 0.5 ? C.powerLo.clone().lerp(C.powerMid, pw * 2) : C.powerMid.clone().lerp(C.powerHi, (pw - 0.5) * 2);
+    if (st === 'POWER') {
+      [-1, 1].forEach((sg, i) => {
+        const post = { x: LAUNCH.x + dy * 0.45 * sg, y: LAUNCH.y - dx * 0.45 * sg };
+        this.posts[i].position.copy(V(post.x, post.y, 0.11));
+        placeStrip(this.bands[i], post, stone, 0.02 + 0.07 * pw, 0.06);
+        this.bands[i].material.color.copy(powerColor);
+      });
+    }
+
+    // 방향 화살표: 투구 방향. 파워 단계에서는 세기만큼 길어지고 색이 바뀐다
+    const len = st === 'POWER' ? 0.8 + 3.2 * pw : 1.6;
+    const tip = { x: LAUNCH.x + dx * len, y: LAUNCH.y + dy * len };
+    placeStrip(this.aimShaft, LAUNCH, tip, st === 'AIM' ? 0.1 : 0.07, 0.015);
+    this.aimHead.position.copy(V(tip.x, tip.y, 0.016));
+    this.aimHead.rotation.y = -game.aimAngle;
+    const aimColor = st === 'POWER' ? powerColor : new THREE.Color(st === 'AIM' ? '#ffd54f' : '#ffe082');
+    this.aimShaft.material.color.copy(aimColor);
+    this.aimHead.material.color.copy(aimColor);
+
+    this.updateSpinArc(game.spin, true);
+  }
+
+  /** 회전: 호의 길이·두께가 세기, 화살촉이 방향, 색이 시계(주황)/반시계(청록) */
+  updateSpinArc(spin, visible) {
+    const key = visible ? Math.round(spin * 100) : null;
+    if (key === this.spinKey) return;
+    this.spinKey = key;
+    if (this.spinArc) {
+      this.scene.remove(this.spinArc);
+      this.spinArc.geometry.dispose();
+      this.spinArc = null;
+    }
+    this.spinHead.visible = visible && key !== 0;
+    if (!visible || key === 0) return;
+    const r = this.cfg.stoneRadius;
+    const a = Math.abs(spin);
+    const len = a * Math.PI * 1.5;
+    const R0 = r * 1.8;
+    const R1 = R0 + 0.03 + 0.1 * a;
+    // RingGeometry 각도는 위에서 볼 때 반시계 방향. 시계(+)는 시작점을 len만큼 당겨서 그린다.
+    const start = spin > 0 ? Math.PI / 2 - len : Math.PI / 2;
+    const color = spin > 0 ? '#ff7043' : '#26c6da';
+    this.spinArc = new THREE.Mesh(new THREE.RingGeometry(R0, R1, 48, 1, start, len), basic(color, 0.95));
+    this.spinArc.rotation.x = -Math.PI / 2;
+    this.spinArc.position.copy(V(LAUNCH.x, LAUNCH.y, 0.012));
+    this.scene.add(this.spinArc);
+    // 화살촉: 호의 끝에서 회전 방향으로
+    const end = spin > 0 ? start : start + len;
+    const Rm = (R0 + R1) / 2;
+    const tx = spin > 0 ? Math.sin(end) : -Math.sin(end);
+    const ty = spin > 0 ? -Math.cos(end) : Math.cos(end);
+    this.spinHead.position.copy(V(LAUNCH.x + Math.cos(end) * Rm, LAUNCH.y + Math.sin(end) * Rm, 0.013));
+    this.spinHead.rotation.y = -Math.atan2(tx, ty);
+    this.spinHead.scale.setScalar(0.8 + a);
+    this.spinHead.material.color.set(color);
+  }
+
+  renderCharacter(game, alpha, dt) {
     const ch = game.character;
     const cx = lerp(ch.prev.x, ch.pos.x, alpha);
     const cy = lerp(ch.prev.y, ch.pos.y, alpha);
     const bx = lerp(game.broomPrev.x, game.broom.x, alpha);
     const by = lerp(game.broomPrev.y, game.broom.y, alpha);
-    const showChar = game.state === 'SWEEP' || game.state === 'SETTLING' || game.state === 'BURN_RESOLVE';
-    this.character.visible = this.stick.visible = this.broomHead.visible = showChar;
+    const st = game.state;
+    const show = st === 'SWEEP' || st === 'SETTLING' || st === 'BURN_RESOLVE';
+    this.character.visible = this.stick.visible = this.broomHead.visible = this.target.visible = show;
     this.character.position.copy(V(cx, cy));
+    // 번드: 휘청
+    this.character.rotation.z = st === 'BURN_RESOLVE' ? Math.sin(this.time * 30) * 0.25 : 0;
     const hand = V(lerp(cx, bx, 0.25), lerp(cy, by, 0.25), 0.85);
     const headPos = V(bx, by, 0.03);
     this.broomHead.position.copy(headPos);
     this.stick.position.copy(hand).add(headPos).multiplyScalar(0.5);
     this.stick.scale.y = hand.distanceTo(headPos);
     this.stick.quaternion.setFromUnitVectors(UP_Y, hand.clone().sub(headPos).normalize());
+    this.target.position.copy(V(ch.target.x, ch.target.y, 0.01));
 
-    // 센서
-    const moving = game.sim.movingStones();
-    const ref = game.currentStone?.status === 'moving' ? game.currentStone : moving[0];
-    this.sensors.visible = this.options.showSensors && showChar;
-    this.bodyRing.position.copy(V(cx, cy, 0.008));
-    this.broomRing.position.copy(V(bx, by, 0.008));
-    this.contactRing.visible = this.cushionRing.visible = !!ref;
-    this.zone.visible = !!ref && game.state === 'SWEEP' && ref === game.currentStone;
-    if (ref) {
-      const p = V(lerp(ref.prevX, ref.x, alpha), lerp(ref.prevY, ref.y, alpha), 0.008);
-      this.contactRing.position.copy(p);
-      this.cushionRing.position.copy(p);
-      const sp = Math.hypot(ref.vx, ref.vy) || 1;
-      this.zone.position.copy(p);
-      this.zone.rotation.y = Math.atan2(-ref.vx / sp, ref.vy / sp);
+    // 빗자루 머리 색 = 지금 스위핑이 먹히는지: 초록(효과 있음) / 노랑(너무 가까움) / 빨강(닿음) / 기본
+    const f = game.frame;
+    const want = f.contactTicks > 0 ? C.danger : f.cushion ? C.caution : f.posEff > 0 ? C.good : C.broom;
+    this.broomMat.color.lerp(want, 1 - Math.exp(-dt * 20));
+    this.broomPulse = Math.max(0, (this.broomPulse ?? 0) - dt * 6);
+    this.broomHead.scale.set(1 + 0.35 * this.broomPulse, 1 + this.broomPulse, 1 + 0.35 * this.broomPulse);
+    return { x: cx, y: cy, bx, by };
+  }
+
+  renderSweepFeedback(game, alpha, cp) {
+    const { cfg } = game;
+    const cur = game.currentStone;
+    const sweeping = game.state === 'SWEEP' && cur && cur.status === 'moving';
+
+    // 강도 고리: 스톤 둘레를 채우는 길이와 색으로 지금 스위핑 세기
+    const s = game.sweep.intensity;
+    this.intensityRing.visible = this.melt.visible = sweeping && s > 0.02;
+    if (this.intensityRing.visible) {
+      const p = { x: lerp(cur.prevX, cur.x, alpha), y: lerp(cur.prevY, cur.y, alpha) };
+      this.intensityRing.position.copy(V(p.x, p.y, 0.01));
+      this.intensityRing.geometry.setDrawRange(0, Math.max(1, Math.round(48 * s)) * 6);
+      this.intensityRing.material.color.copy(C.low).lerp(C.good, s);
+      // 스톤 앞 얼음이 녹는 띠: 세게 쓸수록 진하고 길다
+      const sp = Math.hypot(cur.vx, cur.vy) || 1;
+      const d = { x: cur.vx / sp, y: cur.vy / sp };
+      const a = { x: p.x + d.x * cfg.stoneRadius, y: p.y + d.y * cfg.stoneRadius };
+      const b = { x: a.x + d.x * (0.4 + 0.8 * s), y: a.y + d.y * (0.4 + 0.8 * s) };
+      placeStrip(this.melt, a, b, cfg.stoneRadius * 2.2, 0.007);
+      this.melt.material.opacity = 0.15 + 0.5 * s;
     }
-    const contact = game.frame.contactTicks > 0;
-    this.contactRing.material.opacity = contact ? 0.95 : 0.35;
-    this.cushionRing.material.opacity = game.frame.cushion ? 0.95 : 0.35;
-    this.broomRing.material.color.set(contact ? '#e53935' : game.frame.cushion ? '#fdd835' : '#ffffff');
 
-    this.targetMarker.visible = showChar;
-    this.targetMarker.position.copy(V(ch.target.x, ch.target.y, 0.01));
+    // 경고: 빗자루가 쿠션에 들어오거나 닿을 때만, 몸이 움직이는 스톤에 가까울 때만 보인다
+    const moving = game.sim.movingStones();
+    let near = null;
+    let nd = Infinity;
+    let bodyD = Infinity;
+    for (const m of moving) {
+      const d = Math.hypot(m.x - cp.bx, m.y - cp.by);
+      if (d < nd) {
+        nd = d;
+        near = m;
+      }
+      bodyD = Math.min(bodyD, Math.hypot(m.x - cp.x, m.y - cp.y) - cfg.stoneRadius - cfg.bodyJudgeRadius);
+    }
+    const f = game.frame;
+    this.cushionWarn.visible = !!near && (f.cushion || f.contactTicks > 0);
+    if (this.cushionWarn.visible) {
+      this.cushionWarn.position.copy(V(lerp(near.prevX, near.x, alpha), lerp(near.prevY, near.y, alpha), 0.012));
+      this.cushionWarn.material.color.copy(f.contactTicks > 0 ? C.danger : C.caution);
+      this.cushionWarn.material.opacity = 0.6 + 0.4 * Math.sin(this.time * 25);
+    }
+    this.bodyWarn.visible = bodyD < 0.35 && game.state !== 'BURN_RESOLVE';
+    if (this.bodyWarn.visible) {
+      this.bodyWarn.position.copy(V(cp.x, cp.y, 0.012));
+      this.bodyWarn.material.opacity = Math.min(1, (0.35 - bodyD) / 0.2);
+    }
 
-    this.renderer.render(this.scene, this.active);
-    this.minimapVisible = this.options.showMinimap && ['AIM', 'SPIN', 'POWER', 'SWEEP', 'SETTLING', 'BURN_RESOLVE'].includes(game.state);
-    if (this.minimapVisible && this.minimapEl) this.renderMinimap(cfg, this.minimapEl.getBoundingClientRect());
+    // 디버그: 판정 원·유효 영역
+    this.sensors.visible = this.options.showSensors && this.character.visible;
+    if (this.sensors.visible) {
+      this.dbgBody.position.copy(V(cp.x, cp.y, 0.008));
+      this.dbgBroom.position.copy(V(cp.bx, cp.by, 0.008));
+      const ref = cur?.status === 'moving' ? cur : near;
+      this.dbgContact.visible = this.dbgZone.visible = !!ref;
+      if (ref) {
+        const p = V(ref.x, ref.y, 0.008);
+        this.dbgContact.position.copy(p);
+        const sp = Math.hypot(ref.vx, ref.vy) || 1;
+        this.dbgZone.position.copy(p);
+        this.dbgZone.rotation.y = Math.atan2(-ref.vx / sp, ref.vy / sp);
+      }
+    }
   }
 
   /** 투구·스위핑 중 목표 보드를 탑다운으로 보여주는 인셋 */
@@ -409,28 +565,5 @@ export class Renderer {
     const behind = v.z > 1;
     const inside = !behind && Math.abs(v.x) <= 1 && Math.abs(v.y) <= 1;
     return { nx: behind ? -v.x : v.x, ny: behind ? -Math.abs(v.y) - 1 : v.y, inside };
-  }
-
-  updateSpinArc(spin, visible) {
-    const key = visible ? Math.round(spin * 100) : null;
-    if (key === this.spinKey) return;
-    this.spinKey = key;
-    if (this.spinArc) {
-      this.scene.remove(this.spinArc);
-      this.spinArc.geometry.dispose();
-      this.spinArc = null;
-    }
-    if (!visible || key === 0) return;
-    const r = this.cfg.stoneRadius;
-    const len = Math.abs(spin) * Math.PI * 1.5;
-    // RingGeometry 각도는 위에서 볼 때 반시계 방향. 시계(+)는 시작점을 len만큼 당겨서 그린다.
-    const start = spin > 0 ? Math.PI / 2 - len : Math.PI / 2;
-    this.spinArc = new THREE.Mesh(
-      new THREE.RingGeometry(r * 1.7, r * 2.15, 48, 1, start, len),
-      new THREE.MeshBasicMaterial({ color: spin > 0 ? '#ff7043' : '#26c6da', side: THREE.DoubleSide, transparent: true, opacity: 0.9 }),
-    );
-    this.spinArc.rotation.x = -Math.PI / 2;
-    this.spinArc.position.copy(V(LAUNCH.x, LAUNCH.y, 0.012));
-    this.scene.add(this.spinArc);
   }
 }

@@ -52,8 +52,8 @@ const FOLDERS = [
 
 export function createDebugPanel(cfg, renderer, input, actions) {
   const narrow = window.matchMedia('(orientation: portrait)').matches;
-  const gui = new GUI({ title: narrow ? '튜닝' : '디버그 · 튜닝', width: narrow ? 220 : 245 });
-  gui.close();
+  const gui = new GUI({ title: '디버그 · 튜닝', width: narrow ? 230 : 260 });
+  gui.hide(); // 상단 ⚙ 버튼으로 연다
   const stats = {
     상태: '', 틱: 0, 충돌수: 0, 번드_몸: 0, 번드_빗자루: 0, 투구수: 0,
     직전_정지y: '', 직전_평균스위핑: '', 스위핑_s: '', 입력효율: '', 위치효율: '',
@@ -61,12 +61,12 @@ export function createDebugPanel(cfg, renderer, input, actions) {
   };
 
   const sf = gui.addFolder('통계');
+  sf.close();
   for (const k of Object.keys(stats)) sf.add(stats, k).listen().disable();
 
   const vf = gui.addFolder('보기');
-  vf.add(renderer.options, 'showSensors').name('판정 원·유효 영역');
-  vf.add(renderer.options, 'showPath').name('예상 경로');
-  vf.add(renderer.options, 'showGhosts').name('정답 유령 표시');
+  vf.add(renderer.options, 'showSensors').name('판정 원·유효 영역 (디버그)');
+  vf.add(renderer.options, 'showGhosts').name('정답 위치 (디버그)');
   vf.add(renderer.options, 'showMinimap').name('보드 미니맵');
   vf.add(renderer.options, 'laneTop').name('레인 탑다운 (T)').listen();
   vf.add(input, 'forceAbsolute').name('대체 모드 강제 (절대 좌표)');
@@ -100,6 +100,10 @@ export function createDebugPanel(cfg, renderer, input, actions) {
   for (const k of Object.keys(tools)) gui.add(tools, k);
 
   return {
+    toggle() {
+      if (gui._hidden) gui.show();
+      else gui.hide();
+    },
     update(game) {
       const last = game.stats.lastThrow;
       Object.assign(stats, {

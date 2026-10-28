@@ -82,12 +82,15 @@ export class Simulation {
 
   /**
    * 한 고정 틱. @param sweep {id, s} — 스위핑 중인 스톤과 강도, 없으면 null
-   * @returns {{out: string[]}} 이번 틱에 경기장을 벗어나 제거된 스톤
+   * @returns {{out: string[], hits: {a,b,x,y,impulse}[], stops: string[]}}
+   *   out: 경기장을 벗어나 제거된 스톤, hits: 스톤끼리 충돌(접근 상대속도), stops: 이번 틱에 정지한 스톤
    */
   step(sweep) {
     const { cfg } = this;
     const dt = 1 / cfg.tickRate;
+    const before = new Map();
     for (const s of this.stones.values()) {
+      before.set(s.id, { x: s.vx, y: s.vy });
       s.prevX = s.x;
       s.prevY = s.y;
       const v = s.body.linvel();
@@ -97,11 +100,16 @@ export class Simulation {
     }
 
     this.world.step(this.events);
+    const pairs = [];
     this.events.drainCollisionEvents((h1, h2, started) => {
-      if (started && this.byHandle.has(h1) && this.byHandle.has(h2)) this.collisions++;
+      if (started && this.byHandle.has(h1) && this.byHandle.has(h2)) {
+        this.collisions++;
+        pairs.push([this.byHandle.get(h1), this.byHandle.get(h2)]);
+      }
     });
 
     const out = [];
+    const stops = [];
     for (const s of this.stones.values()) {
       const t = s.body.translation();
       const v = s.body.linvel();
@@ -124,11 +132,19 @@ export class Simulation {
         if (s.status === 'moving' && s.idle >= cfg.stopHoldTicks) {
           s.status = 'stopped';
           s.spin = 0;
+          stops.push(s.id);
         }
       }
       if (this.isOut(s)) out.push(s.id);
     }
+    const hits = pairs.map(([a, b]) => {
+      const A = this.stones.get(a);
+      const B = this.stones.get(b);
+      const va = before.get(a);
+      const vb = before.get(b);
+      return { a, b, x: (A.x + B.x) / 2, y: (A.y + B.y) / 2, impulse: Math.hypot(va.x - vb.x, va.y - vb.y) };
+    });
     for (const id of out) this.removeStone(id);
-    return { out };
+    return { out, hits, stops };
   }
 }

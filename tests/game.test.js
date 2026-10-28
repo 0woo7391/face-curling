@@ -119,3 +119,49 @@ describe('FixedStepper', () => {
     expect(count(irregular)).toBe(600);
   });
 });
+
+describe('이벤트 스트림', () => {
+  it('발사·스트로크·정지·턴 종료 이벤트를 순서대로 내보낸다', async () => {
+    const g = await newGame();
+    throwPart(g, 'nose', { power: 0.6 });
+    runUntil(g, settledOrDone(g), sweepBot(g));
+    const types = g.drainEvents().map((e) => e.type);
+    expect(types[0]).toBe('select');
+    expect(types[1]).toBe('launch');
+    expect(types.filter((t) => t === 'stroke').length).toBeGreaterThan(5);
+    expect(types).toContain('stop');
+    expect(types.at(-1)).toBe('turnEnd');
+    expect(g.drainEvents()).toEqual([]);
+  });
+
+  it('충돌 이벤트는 위치와 세기를 가진다', async () => {
+    const g = await newGame();
+    throwPart(g, 'nose', { power: 0.55 });
+    runUntil(g, settledOrDone(g));
+    g.drainEvents();
+    throwPart(g, 'mouth', { power: 0.8 });
+    runUntil(g, settledOrDone(g));
+    const hit = g.drainEvents().find((e) => e.type === 'collision');
+    expect(hit).toMatchObject({ a: expect.any(String), b: expect.any(String) });
+    expect(hit.impulse).toBeGreaterThan(0.5);
+    expect(hit.y).toBeGreaterThan(15);
+  });
+
+  it('번드 이벤트', async () => {
+    const g = await newGame();
+    throwPart(g, 'mouth', { power: 0.8 });
+    g.enqueue({ type: 'moveAbs', x: 0, y: 5 });
+    runUntil(g, () => g.state === 'BURN_RESOLVE');
+    expect(g.drainEvents().find((e) => e.type === 'burn')).toMatchObject({ cause: 'body' });
+  });
+
+  it('이벤트를 읽든 안 읽든 결과는 같다 (표현 전용)', async () => {
+    const play = async (drain) => {
+      const g = await newGame();
+      throwPart(g, 'nose', { power: 0.7, spin: 0.3 });
+      runUntil(g, settledOrDone(g), () => { sweepBot(g)(); if (drain) g.drainEvents(); });
+      return [...g.sim.stones.values()].map((s) => [s.x, s.y]);
+    };
+    expect(await play(true)).toEqual(await play(false));
+  });
+});

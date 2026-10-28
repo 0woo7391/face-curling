@@ -4,6 +4,8 @@
 //                                       └──────┴→ BURN_RESOLVE → (기록) PART_SELECT/RESULT, (연습) AIM
 //
 // 입력 이벤트는 enqueue()로 쌓이고, 다음 고정 틱 시작 시 그 틱 번호에 귀속된다 (명세 5.2 틱 양자화).
+// 게임은 발사·스트로크·충돌·번드 등을 타입 있는 이벤트로 내보내고(drainEvents), 이펙트·소리는 그것만 구독한다.
+// 이벤트는 표현 전용이며 게임 로직은 이벤트를 읽지 않는다.
 import { FACE_PARTS, makeBoard } from './board.js';
 import { launchVelocity, predictPath } from './curling.js';
 import { Simulation } from './simulation.js';
@@ -47,7 +49,18 @@ export class Game {
     this.result = null;
     this.frame = { cushion: false, contactTicks: 0, posEff: 0 };
     this.stats = { throws: 0, burnsBody: 0, burnsBroom: 0, lastThrow: null };
-    this.log = []; // 이벤트 로그 (HUD 표시·디버그용)
+    this.log = []; // 텍스트 로그 (디버그용)
+    this.events = [];
+  }
+
+  push(ev) {
+    this.events.push({ tick: this.tickCount, ...ev });
+  }
+
+  drainEvents() {
+    const out = this.events;
+    this.events = [];
+    return out;
   }
 
   setMode(mode) {
@@ -92,6 +105,7 @@ export class Game {
     this.spin = 0;
     this.power = 0;
     this.state = 'AIM';
+    this.push({ type: 'select', partId: id });
     return true;
   }
 
@@ -160,6 +174,7 @@ export class Game {
     this.queue.length = 0;
     this.joy = { x: 0, y: 0 };
     this.state = 'SWEEP';
+    this.push({ type: 'launch', partId: this.currentPartId, speed: Math.hypot(v.x, v.y), spin: this.spin, x: LAUNCH.x, y: LAUNCH.y });
   }
 
   // ── 고정 틱 ──
@@ -185,7 +200,10 @@ export class Game {
       if (ev.type === 'move') this.character.moveTargetBy(ev.dx * sens, -ev.dy * sens * this.cfg.forwardSensitivityScale, this.bounds);
       else if (ev.type === 'moveAbs') this.character.setTarget(ev.x, ev.y, this.bounds);
       else if (ev.type === 'joy') this.joy = { x: ev.x, y: ev.y };
-      else if (ev.type === 'press' && this.state === 'SWEEP') this.sweep.press(ev.button, this.tickCount);
+      else if (ev.type === 'press' && this.state === 'SWEEP') {
+        const r = this.sweep.press(ev.button, this.tickCount);
+        if (r === 'rejected-order' || r === 'rejected-busy') this.push({ type: 'reject', reason: r });
+      }
     }
 
     // 조이스틱: 기울이는 동안만 목표점이 움직이고, 놓으면 그 자리(월드 고정)에 멈춘다. 틱 단위로 적분.
@@ -208,6 +226,7 @@ export class Game {
     this.broom = { x: raw.x + this.character.assist.x, y: raw.y + this.character.assist.y };
 
     const bm = this.burnMon.update(this.character.pos, this.broom, moving);
+    if (bm.cushion && !this.frame.cushion) this.push({ type: 'cushion', x: this.broom.x, y: this.broom.y });
     this.frame.cushion = bm.cushion;
     this.frame.contactTicks = bm.contactTicks;
     if (bm.burn) {
@@ -217,6 +236,7 @@ export class Game {
     if (bm.contactStarted) {
       this.sweep.penalize(this.tickCount);
       this.emit('빗자루 스침 — 스위핑 일시 중단');
+      this.push({ type: 'contact', x: this.broom.x, y: this.broom.y });
     }
 
     let posEff = 0;
@@ -227,15 +247,24 @@ export class Game {
     }
     this.frame.posEff = posEff;
     const s = this.sweep.update(this.tickCount, posEff, speedFactor);
+    if (this.sweep.completed) {
+      this.push({ type: 'stroke', ...this.sweep.completed, intensity: s, x: this.broom.x, y: this.broom.y });
+    }
     if (this.state === 'SWEEP' && s > 0) {
       this.throwInfo.sweepTicks++;
       this.throwInfo.sweepSum += s;
     }
 
-    const { out } = this.sim.step(this.state === 'SWEEP' && cur ? { id: cur.id, s } : null);
+    const { out, hits, stops } = this.sim.step(this.state === 'SWEEP' && cur ? { id: cur.id, s } : null);
+    for (const h of hits) this.push({ type: 'collision', ...h });
+    for (const id of stops) {
+      const st = this.sim.stones.get(id);
+      this.push({ type: 'stop', id, x: st.x, y: st.y });
+    }
     for (const id of out) {
       this.parts.find((p) => p.id === id).status = 'out';
       this.emit(`${labelOf(id)} 경기장 이탈`);
+      this.push({ type: 'out', id });
     }
 
     if (this.state === 'SWEEP') {
@@ -262,7 +291,11 @@ export class Game {
     if (this.parts.every((p) => p.status !== 'pending')) {
       this.result = this.computeScores();
       this.state = 'RESULT';
-    } else this.state = 'PART_SELECT';
+      this.push({ type: 'result', mean: this.result.mean });
+    } else {
+      this.state = 'PART_SELECT';
+      this.push({ type: 'turnEnd' });
+    }
   }
 
   // ── 번드 (3.9, v1.1/v1.2) ──
@@ -273,6 +306,8 @@ export class Game {
     if (burn.cause === 'body') this.stats.burnsBody++;
     else this.stats.burnsBroom++;
     this.emit(`BURNED (${burn.cause === 'body' ? '몸' : '빗자루'} → ${labelOf(burn.stoneId)})`);
+    const st = this.sim.stones.get(burn.stoneId);
+    this.push({ type: 'burn', cause: burn.cause, x: st.x, y: st.y });
     this.state = 'BURN_RESOLVE';
   }
 

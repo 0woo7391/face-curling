@@ -49,6 +49,7 @@ export class SweepController {
     this.expect = 'push';
     this.anim = null;
     this.buffered = null;
+    this.completed = null;
     this.validTicks = [];
     this.history = []; // 최근 스트로크 [{kind, valid}]
     this.intensity = 0;
@@ -96,8 +97,10 @@ export class SweepController {
 
   update(tick, posEff, speedFactor) {
     const { cfg } = this;
+    this.completed = null; // 이번 틱에 끝난 스트로크 {kind, valid} — 이펙트·소리용
     if (this.anim && tick >= this.anim.end) {
       const valid = posEff > 0;
+      this.completed = { kind: this.anim.kind, valid };
       if (valid) this.validTicks.push(tick);
       this.history.push({ kind: this.anim.kind, valid });
       if (this.history.length > 8) this.history.shift();

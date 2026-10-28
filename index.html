@@ -12,65 +12,53 @@
     <div id="loading">물리 엔진 불러오는 중…</div>
     <div id="hud">
       <header id="topbar">
-        <strong>FACE CURLING · POC A</strong>
+        <strong>FACE CURLING</strong>
         <span id="status"></span>
         <span class="spacer"></span>
-        <label>모드
-          <select id="mode">
-            <option value="record">기록</option>
-            <option value="practice">연습</option>
-          </select>
-        </label>
-        <button id="restart">재시작</button>
-        <button id="help-btn">조작법</button>
+        <select id="mode" aria-label="모드">
+          <option value="record">기록</option>
+          <option value="practice">연습</option>
+        </select>
+        <button id="restart" aria-label="재시작">↺</button>
+        <button id="mute" aria-label="소리">🔊</button>
+        <button id="help-btn" aria-label="조작법">?</button>
+        <button id="tune" aria-label="튜닝">⚙</button>
       </header>
 
       <aside id="parts"></aside>
 
       <footer id="bottom">
-        <div id="instruction"></div>
+        <div id="steps" hidden><span>방향</span><span>회전</span><span>파워</span></div>
+        <div id="hint"></div>
         <div id="controls">
-          <button id="back" hidden>◀ 뒤로</button>
+          <button id="back" hidden>◀</button>
           <button id="next" hidden>다음 ▶</button>
-          <button id="undo" hidden>직전 투구 되돌리기</button>
+          <button id="undo" hidden>↶ 되돌리기</button>
         </div>
       </footer>
 
-      <section id="sweep-panel" hidden>
-        <div class="meter"><span>스위핑 강도</span><div class="bar" id="bar-s"></div></div>
-        <div class="meter"><span>입력 효율</span><div class="bar" id="bar-input"></div></div>
-        <div class="meter"><span>위치 효율</span><div class="bar" id="bar-pos"></div></div>
-        <div id="rhythm"></div>
-        <div id="next-input"></div>
-        <div id="rate"></div>
-        <div id="stone-info"></div>
-        <div id="warn"></div>
-      </section>
+      <div id="next-key" hidden><b class="l">밀기</b><b class="r">당기기</b></div>
 
-      <div id="minimap-frame"><span>보드</span></div>
-      <div id="touch-swipe"><span>↑ 밀기</span><b>위아래로 문지르기</b><span>↓ 당기기</span></div>
-      <div id="touch-move-hint">왼쪽을 누르고 끌어서<br />캐릭터 이동</div>
+      <div id="minimap-frame"></div>
+      <div id="touch-swipe"><span class="up">▲ 밀기</span><span class="down">▼ 당기기</span></div>
       <div id="touch-joy" hidden><div id="touch-knob"></div></div>
       <div id="offscreen" hidden></div>
-      <div id="banner" hidden></div>
-      <div id="lock-overlay" hidden>
-        <div>클릭해서 스위핑 조작 시작·재개<small>마우스가 화면에 고정됩니다 · <kbd>Esc</kbd>로 해제 · 스톤은 계속 움직입니다</small></div>
-      </div>
+
+      <div id="vignette"></div>
+      <div id="stamp">BURNED</div>
+      <div id="lock-overlay" hidden><div>클릭해서 시작<small>Esc로 마우스 잠금 해제</small></div></div>
       <section id="result" hidden></section>
-      <div id="log"></div>
 
       <section id="help">
         <h2>조작법</h2>
         <ol>
-          <li><b>부위 선택</b> — 오른쪽 목록 클릭</li>
-          <li><b>방향</b> — 레인을 클릭·드래그 → 다음</li>
-          <li><b>회전</b> — 스톤 주위를 원 그리며 드래그 (시계 = 오른쪽으로 휨) → 다음</li>
-          <li><b>파워</b> — 누른 채 아래로 당기고 놓으면 발사</li>
-          <li><b>스위핑</b> — 마우스 이동으로 캐릭터 목표점 이동(월드 고정, 마우스 잠금), <b>좌클릭 밀기 → 우클릭 당기기</b> 교대. 초록 영역(스톤 앞)에서만 효과</li>
-          <li>빗자루가 <span class="y">노란 원</span> 안 = 쿠션(경고만), <span class="r">빨간 원</span>에 <i>graceTicks</i> 이상 겹침 = BURNED. 몸이 닿으면 즉시 BURNED</li>
-          <li><kbd>T</kbd> 레인 탑다운 전환 · 오른쪽 위 <b>디버그 · 튜닝</b> 패널에서 수치 조정</li>
+          <li><b>부위 선택</b> → <b>방향</b>(레인 드래그) → <b>회전</b>(스톤 주위를 빙글) → <b>파워</b>(아래로 당겼다 놓기)</li>
+          <li><b>PC 스위핑</b>: 마우스 이동 = 캐릭터 이동, 좌클릭 밀기 → 우클릭 당기기 번갈아</li>
+          <li><b>폰 스위핑</b>: 왼쪽 누르고 끌기 = 이동, 오른쪽 위아래로 문지르기</li>
+          <li>빗자루가 <span class="g">초록</span>이면 효과 있음, <span class="y">노랑</span>은 너무 가까움, <span class="r">빨강</span>은 닿음. 계속 닿거나 몸이 스톤에 닿으면 BURNED</li>
+          <li>스톤 둘레 고리가 찰수록 세게 쓸고 있는 것. 세게 쓸면 더 멀리, 덜 휘어 갑니다</li>
+          <li><kbd>T</kbd> 레인 전체 보기</li>
         </ol>
-        <p>클릭하면 닫힙니다.</p>
       </section>
     </div>
     <script type="module" src="./src/main.js"></script>
