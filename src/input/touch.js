@@ -31,8 +31,9 @@ export class TouchInput {
   down(e) {
     if (e.pointerType !== 'touch' || !this.sweeping) return;
     e.preventDefault();
-    const left = e.clientX < window.innerWidth / 2;
-    if (left && !this.joy && e.clientX > EDGE_GUARD) {
+    const rect = this.canvas.getBoundingClientRect();
+    const left = e.clientX < rect.left + rect.width / 2;
+    if (left && !this.joy && e.clientX > rect.left + EDGE_GUARD) {
       this.joy = { id: e.pointerId, ox: e.clientX, oy: e.clientY };
       this.canvas.setPointerCapture(e.pointerId);
       this.showJoy(e.clientX, e.clientY, 0, 0);

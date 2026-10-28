@@ -1,10 +1,9 @@
 const { chromium } = require('playwright');
-const SP = process.argv[2];
+const SP = process.argv[2] ?? '/tmp';
 const VIEWS = [
   { name: 'pc-1400x860', w: 1400, h: 860, touch: false },
   { name: 'panel-935x823', w: 935, h: 823, touch: false },
   { name: 'phone-390x664', w: 390, h: 664, touch: true, dpr: 3 },
-  { name: 'phone-land-844x390', w: 844, h: 390, touch: true, dpr: 3 },
   { name: 'tablet-768x1024', w: 768, h: 1024, touch: true, dpr: 2 },
 ];
 const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls', '#next-key', '#minimap-frame', '#touch-swipe', '#result', '#offscreen'];
@@ -88,7 +87,8 @@ const HUD = ['#lock-overlay', '#topbar', '#parts', '#steps', '#hint', '#controls
         }
         for (const [name, x, y] of pts) {
           const p = r.worldToScreen(x, y);
-          if (p.x < 0 || p.y < 0 || p.x > innerWidth || p.y > innerHeight) { issues.push(`${name} 화면 밖 (${Math.round(p.x)},${Math.round(p.y)})`); continue; }
+          const S = document.getElementById('stage').getBoundingClientRect();
+          if (p.x < S.left || p.y < S.top || p.x > S.right || p.y > S.bottom) { issues.push(`${name} 화면 밖 (${Math.round(p.x)},${Math.round(p.y)})`); continue; }
           for (const h of vis) {
             const m = 12;
             if (p.x > h.x0 - m && p.x < h.x1 + m && p.y > h.y0 - m && p.y < h.y1 + m) issues.push(`${name} ← ${h.sel}에 가려짐`);

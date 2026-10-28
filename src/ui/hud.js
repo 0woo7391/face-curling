@@ -125,16 +125,18 @@ export class Hud {
    * - 좌/우: 키 큰 옆 패널(가로 화면의 결과·부위 목록)
    */
   insets() {
-    const W = window.innerWidth;
-    const H = window.innerHeight;
-    const top = $('topbar').getBoundingClientRect().bottom;
+    const S = $('stage').getBoundingClientRect();
+    const W = S.width;
+    const H = S.height;
+    const top = $('topbar').getBoundingClientRect().bottom - S.top;
     let bottomEdge = H;
     let left = 0;
     let right = 0;
     for (const id of ['steps', 'hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result']) {
       const el = $(id);
-      const r = el.getBoundingClientRect();
-      if (r.height === 0 || (id === 'hint' && !el.textContent)) continue;
+      const b = el.getBoundingClientRect();
+      if (b.height === 0 || (id === 'hint' && !el.textContent)) continue;
+      const r = { left: b.left - S.left, right: b.right - S.left, top: b.top - S.top, height: b.height };
       const centered = r.left < W * 0.65 && r.right > W * 0.35;
       if (centered && r.top > H * 0.4) bottomEdge = Math.min(bottomEdge, r.top);
       else if (r.height > H * 0.25) {
@@ -172,8 +174,9 @@ export class Hud {
     el.hidden = !info || info.inside;
     if (el.hidden) return;
     const k = 1 / Math.max(Math.abs(info.nx), Math.abs(info.ny), 1e-6);
-    el.style.left = `${(0.5 + info.nx * k * 0.46) * window.innerWidth}px`;
-    el.style.top = `${(0.5 - info.ny * k * 0.42) * window.innerHeight}px`;
+    const S = $('stage').getBoundingClientRect();
+    el.style.left = `${(0.5 + info.nx * k * 0.44) * S.width}px`;
+    el.style.top = `${(0.5 - info.ny * k * 0.42) * S.height}px`;
     const ref = g.currentStone ?? g.character.target;
     const d = Math.hypot(ref.x - g.character.pos.x, ref.y - g.character.pos.y);
     const arrow = Math.abs(info.nx) > Math.abs(info.ny) ? (info.nx > 0 ? '▶' : '◀') : info.ny > 0 ? '▲' : '▼';

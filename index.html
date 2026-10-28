@@ -8,6 +8,7 @@
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
+    <div id="stage">
     <div id="app"></div>
     <div id="loading">물리 엔진 불러오는 중…</div>
     <div id="hud">
@@ -46,7 +47,7 @@
 
       <div id="vignette"></div>
       <div id="stamp">BURNED</div>
-      <div id="lock-overlay" hidden><div>🖱 화면을 클릭하면 조작 시작<small>Esc = 해제</small></div></div>
+      <div id="lock-overlay" hidden><div>🖱 클릭하면 조작 시작<small>Esc 해제</small></div></div>
       <section id="result" hidden></section>
 
       <section id="help">
@@ -61,6 +62,8 @@
         </ol>
       </section>
     </div>
+    </div>
+    <div id="rotate">📱 세로로 돌려 주세요</div>
     <script type="module" src="./src/main.js"></script>
   </body>
 </html>
