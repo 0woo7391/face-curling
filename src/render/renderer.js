@@ -81,6 +81,7 @@ export class Renderer {
     this.raycaster = new THREE.Raycaster();
     this.ground = new THREE.Plane(UP_Y, 0);
     this.time = 0;
+    this.insets = { top: 0, bottom: 0, left: 0, right: 0 }; // HUD가 가리는 가장자리 폭 (px)
     window.addEventListener('resize', () => this.resize());
     this.resize();
   }
@@ -91,13 +92,45 @@ export class Renderer {
     this.renderer.setSize(w, h);
     this.portrait = h > w;
     this.persp.aspect = w / h;
-    // 세로 화면: 가로 시야가 좁아지므로 FOV를 넓히고, 아래쪽 조작 영역(엄지)을 피해 화면 중심을 위로 올린다
+    // 세로 화면: 가로 시야가 좁아지므로 FOV를 넓힌다
     this.persp.fov = this.portrait ? 68 : 50;
+    this.applyInsets();
+  }
+
+  /**
+   * HUD가 가리지 않는 영역(위 막대 아래 ~ 아래 조작부 위)의 가운데에 장면 중심이 오도록 화면을 옮긴다.
+   * 버튼·패널이 스톤과 캐릭터를 가리지 않게 하기 위함.
+   */
+  setInsets(next) {
+    const cur = this.insets;
+    if (['top', 'bottom', 'left', 'right'].every((k) => Math.abs(next[k] - cur[k]) < 2)) return;
+    this.insets = { ...next };
+    this.applyInsets();
+  }
+
+  applyInsets() {
+    const w = this.container.clientWidth;
+    const h = this.container.clientHeight;
+    const { top, bottom, left, right } = this.insets;
+    const sx = (right - left) / 2;
+    const sy = (bottom - top) / 2;
     for (const cam of [this.persp, this.ortho]) {
-      if (this.portrait) cam.setViewOffset(w, h, 0, h * 0.16, w, h);
+      if (Math.abs(sx) > 1 || Math.abs(sy) > 1) cam.setViewOffset(w, h, sx, sy, w, h);
       else cam.clearViewOffset();
     }
     this.persp.updateProjectionMatrix();
+    this.ortho.updateProjectionMatrix();
+  }
+
+  /** 전체 화면 대비 HUD 없는 영역의 비율 — 탑다운에서 보드가 HUD 사이에 다 들어오게 */
+  get safeScale() {
+    const h = this.container.clientHeight;
+    return h / Math.max(120, h - this.insets.top - this.insets.bottom);
+  }
+
+  get safeScaleX() {
+    const w = this.container.clientWidth;
+    return w / Math.max(120, w - this.insets.left - this.insets.right);
   }
 
   // ── 장면 구성 (재시작마다) ──
@@ -281,7 +314,7 @@ export class Renderer {
 
   /** halfW: 가로로 반드시 보여야 하는 반폭 — 세로 화면에서 잘리지 않게 */
   overhead(cx, cy, halfH, halfW = 0) {
-    halfH = Math.max(halfH, halfW / this.persp.aspect);
+    halfH = Math.max(halfH * this.safeScale, (halfW * this.safeScaleX) / this.persp.aspect);
     const H = halfH / Math.tan(THREE.MathUtils.degToRad(this.persp.fov / 2));
     return { pos: V(cx, cy, H), look: V(cx, cy, 0), up: UP_TOP, ortho: true, halfH, speed: 4 };
   }
@@ -291,7 +324,7 @@ export class Renderer {
     const st = game.state;
     if (st === 'PART_SELECT' || st === 'RESULT') return this.overhead(0, cfg.boardCenterY, cfg.boardSize * 0.62, cfg.boardSize * 0.56);
     if (st === 'AIM' || st === 'SPIN' || st === 'POWER') {
-      return { pos: V(0, LAUNCH.y - 5, 4.2), look: V(0, LAUNCH.y + 9, 0), up: UP_Y, ortho: false, speed: 4 };
+      return { pos: V(0, LAUNCH.y - 6.5, 5.2), look: V(0, LAUNCH.y + 5, 0), up: UP_Y, ortho: false, speed: 4 };
     }
     if (this.options.laneTop || this.fallback) {
       return this.overhead(0, (cfg.laneLength + cfg.backLimitY) / 2, (cfg.laneLength - cfg.backLimitY) / 2 + 0.4, cfg.laneWidth / 2 + 0.4);
@@ -382,7 +415,7 @@ export class Renderer {
 
     // 파워: 스톤이 뒤로 당겨지고, 밴드가 굵어지며 초록→노랑→빨강
     const pw = st === 'POWER' ? game.power : 0;
-    const pull = pw * 0.9;
+    const pull = pw * 0.6;
     const stone = { x: LAUNCH.x - dx * pull, y: LAUNCH.y - dy * pull };
     this.previewStone.position.copy(V(stone.x, stone.y));
     this.previewStone.userData.handle.rotation.y = 0;

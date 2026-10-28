@@ -72,8 +72,9 @@ async function main() {
     sound.update(game);
 
     renderer.fallback = input.fallback;
-    renderer.render(game, stepper.alpha, Math.min(dt, 0.1));
     hud.update(input, renderer, sound.muted);
+    renderer.setInsets(hud.insets());
+    renderer.render(game, stepper.alpha, Math.min(dt, 0.1));
     debug.update(game);
     requestAnimationFrame(frame);
   }
@@ -81,7 +82,7 @@ async function main() {
   document.getElementById('loading').remove();
   // 브라우저 콘솔·자동 테스트용. paused=true면 루프가 틱을 진행하지 않는다 (렌더는 계속)
   window.__game = game;
-  window.__debug = debugHooks;
+  window.__debug = Object.assign(debugHooks, { renderer, input });
 }
 
 /** Android만 지원 (iOS Safari는 navigator.vibrate 없음) */

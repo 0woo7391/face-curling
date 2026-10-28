@@ -119,6 +119,32 @@ export class Hud {
     this.updateResult();
   }
 
+  /**
+   * HUD가 화면 가장자리에서 차지하는 폭. 렌더러는 이 안쪽 영역 가운데에 장면을 놓는다.
+   * - 아래: 가운데 세로띠에 걸친 아래쪽 요소(단계·힌트·버튼·다음 입력·세로 화면의 부위 목록·결과 시트)
+   * - 좌/우: 키 큰 옆 패널(가로 화면의 결과·부위 목록)
+   */
+  insets() {
+    const W = window.innerWidth;
+    const H = window.innerHeight;
+    const top = $('topbar').getBoundingClientRect().bottom;
+    let bottomEdge = H;
+    let left = 0;
+    let right = 0;
+    for (const id of ['steps', 'hint', 'controls', 'next-key', 'touch-swipe', 'parts', 'result']) {
+      const el = $(id);
+      const r = el.getBoundingClientRect();
+      if (r.height === 0 || (id === 'hint' && !el.textContent)) continue;
+      const centered = r.left < W * 0.65 && r.right > W * 0.35;
+      if (centered && r.top > H * 0.4) bottomEdge = Math.min(bottomEdge, r.top);
+      else if (r.height > H * 0.25) {
+        if (r.right < W * 0.6) left = Math.max(left, r.right);
+        else if (r.left > W * 0.4) right = Math.max(right, W - r.left);
+      }
+    }
+    return { top, bottom: H - bottomEdge, left, right };
+  }
+
   hint(touch) {
     switch (this.game.state) {
       case 'PART_SELECT':
